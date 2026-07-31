@@ -4,12 +4,14 @@ from telebot import types
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
+ADMIN_IDS = [123456789, 987654321]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_data = {}
 admin_reports_map = {}
 forwarding_users = {}  # Словарь для режима пересылки сообщений после анкеты
+
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -127,7 +129,7 @@ def get_experience(message):
         f'🎮 ПвЕ: {user_data[chat_id]["pve_rating"]}/10\n'
         f'🔥 ПвП: {user_data[chat_id]["pvp_rating"]}/10\n'
         f'Стаж игры: {experience_text}.\n\n'
-        'Твоя заявка принята к рассмотрению!\n\n'
+        'Твоя заявка принята к рассмотрению!'
     )
     
     markup = types.InlineKeyboardMarkup()
@@ -155,7 +157,7 @@ def get_experience(message):
     sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report, reply_markup=markup)
     admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
     
-    # *** ВКЛЮЧЕНИЕ РЕЖИМА ЧАТА ***
+    # Включаем режим свободной отправки сообщений от кандидата в группу
     forwarding_users[chat_id] = True
     
     del user_data[chat_id]
@@ -167,59 +169,45 @@ def _cleanup_old_reports(current_msg_id: int):
     for key in keys_to_delete:
         admin_reports_map.pop(key, None)
 
+
+# *** ГЛАВНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ОТ ПОЛЬЗОВАТЕЛЕЙ И АДМИНОВ ***
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio', 'location', 'contact'])
 def main_router(message):
-    """
-    Главный диспетчер. Проверяет, не находится ли юзер в режиме пересылки.
-    Если да — шлем всё в группу.
-    """
     chat_id = message.chat.id
 
-    # Если пользователь включил режим отправки сообщений в группу
+    # 1. Если сообщение пришло ОТ АДМИНА внутри ГРУППЫ
+    if message.chat.id == GROUP_CHAT_ID and message.from_user.id in ADMIN_IDS:
+        
+        # А) Если админ отвечает на системное сообщение-заявку (из admin_reports_map)
+        if message.reply_to_message and message.reply_to_message.message_id in admin_reports_map:
+            target_user_id = admin_reports_map[message.reply_to_message.message_id]['user_chat_id']
+            
+            if message.content_type == 'text':
+                bot.send_message(target_user_id, f"✉️ Ответ от администрации:\n\n{message.text}")
+            elif message.content_type == 'photo':
+                file_id = message.photo[-1].file_id; caption = message.caption if message.caption else ""
+                bot.send_photo(target_user_id, file_id, caption=caption)
+            elif message.content_type == 'video':
+                file_id = message.video.file_id; caption = message.caption if message.caption else ""
+                bot.send_video(target_user_id, file_id, caption=caption)
+            elif message.content_type == 'document':
+                file_id = message.document.file_id; caption = message.caption if message.caption else ""
+                bot.send_document(target_user_id, file_id, caption=caption)
+            elif message.content_type == 'voice':
+                file_id = message.voice.file_id; bot.send_voice(target_user_id, file_id)
+            elif message.content_type == 'sticker':
+                file_id = message.sticker.file_id; bot.send_sticker(target_user_id, file_id)
+                
+        # Б) Если админ пишет обычное сообщение в группе (не ответ), оно НЕ уходит пользователям
+        return
+
+    # 2. Если сообщение пришло ОТ КАНДИДАТА (личным сообщением боту)
     if chat_id in forwarding_users:
         try:
-            # Пересылаем сообщение В ТОЧНОСТИ как оно пришло (сохраняя автора!)
+            # Пересылаем его в группу как есть
             bot.forward_message(GROUP_CHAT_ID, chat_id, message.message_id)
         except Exception as e:
             bot.send_message(chat_id, f"❌ Ошибка отправки: {e}")
         return
 
-    # Если это текстовые команды управления
-    if message.content_type == 'text':
-        txt = message.text.lower()
-        
-        if txt == '/stop':
-            if chat_id in forwarding_users:
-                del forwarding_users[chat_id]
-                bot.send_message(chat_id, "🔴 Режим свободной отправки отключен. Чтобы подать новую заявку, напиши /start.")
-            else:
-                bot.send_message(chat_id, "Режим и так был выключен.", reply_markup=types.ReplyKeyboardRemove())
-            return
-            
-        # Если человек просто написал боту рандомный текст НЕ в режиме заявки
-        help_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
-        help_markup.add(types.KeyboardButton("✍️ Начать подачу заявки"))
-        bot.send_message(chat_id, "Я жду команд:\n• /start — чтобы подать заявку.\n• /stop — если вы писали в чат и хотите остановиться.", reply_markup=help_markup)
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback_worker(call):
-    """Обработчик кнопок под заявкой в группе (для админов)"""
-    if call.data.startswith("reply_"):
-        parts = call.data.split('_')
-        target_id = int(parts[1])
-        msg_id_to_reply = int(parts[2])
-        
-        # Просим админа написать ответ пользователю
-        bot.answer_callback_query(call.id, "Напишите ответ этому пользователю:")
-        bot.register_next_step_handler_by_chat_id(call.message.chat.id, lambda m: send_reply_to_user(m, target_id, msg_id_to_reply))
-
-def send_reply_to_user(message, target_chat_id, replied_to_msg_id):
-    """Пересылка ответа админа пользователю"""
-    try:
-        bot.send_message(target_chat_id, f"✉️ Ответ от администрации на вашу заявку:\n\n{message.text}")
-    except Exception as e:
-        print(f"Ошибка при отправке личного сообщения: {e}")
-
-if __name__ == '__main__':
-    print("Бот запущен...")
-    bot.infinity_polling()
+    # 3.
