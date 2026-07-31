@@ -56,10 +56,13 @@ def check_age(message):
         bot.send_message(chat_id, error_text)
         bot.register_next_step_handler(message, check_age)
 
+# *** ИСПРАВЛЕННАЯ ФУНКЦИЯ ***
 def get_donate(message):
     chat_id = message.chat.id
     user_data[chat_id]['donate'] = message.text.strip().capitalize()
+    
     bot.send_message(chat_id, 'Ваш дискорд?')
+    # Добавлен переход к следующему шагу (был обрыв цепочки)
     bot.register_next_step_handler(message, get_discord)
 
 def get_discord(message):
@@ -210,4 +213,15 @@ def main_router(message):
             bot.send_message(chat_id, f"❌ Ошибка отправки: {e}")
         return
 
-    # 3.
+    # 3. Если это /start от человека, который еще не в режиме заявки
+    if message.content_type == 'text' and message.text == '/start':
+        handle_start(message)
+        return
+
+    # 4. Если человек написал что-то рандомное боту вне анкеты
+    bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
+
+
+if __name__ == '__main__':
+    print("Бот запущен...")
+    bot.infinity_polling()
