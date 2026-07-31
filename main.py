@@ -128,8 +128,6 @@ def get_experience(message):
         f'🔥 ПвП: {user_data[chat_id]["pvp_rating"]}/10\n'
         f'Стаж игры: {experience_text}.\n\n'
         'Твоя заявка принята к рассмотрению!\n\n'
-        'Теперь ты можешь присылать сюда скриншоты, видео или вопросы — они будут видны руководству.\n'
-        'Чтобы выключить этот режим, напиши /stop.'
     )
     
     markup = types.InlineKeyboardMarkup()
