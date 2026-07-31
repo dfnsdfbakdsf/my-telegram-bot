@@ -1,48 +1,17 @@
-
 import telebot
 from telebot import types
 from threading import Timer # Для задержки кнопок
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw" # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
-GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
-ADMIN_IDS = [123456789]                 # ДОБАВЬТЕ СВОИ TELEGRAM ID
+BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ВАШ ТОКЕН!
+GROUP_CHAT_ID = -1004291446609                     # ВАШ ID ГРУППЫ!
+ADMIN_IDS = [123456789]                 # ВАШ TELEGRAM ID!
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_data = {}  # Хранит данные во время заполнения анкеты
 forwarding_users = {}  # Словарь формата {chat_id_кандидата: [list_of_messages_in_group]}
-
-
-def get_user_chat_id(message):
-    """
-    Функция ищет chat_id кандидата по любому сообщению в группе.
-    Работает через Reply или через кнопку.
-    """
-    if isinstance(message, int): # Если передан просто ID чата
-        return message
-
-    # Вариант А: Админ нажал кнопку ✉️ Ответить кандидату
-    callback_data = getattr(message, 'data', None)
-    if callback_data and callback_data.startswith('reply_'):
-        return int(callback_data.split('_')[1])
-    
-    # Вариант Б: Обычный Reply на любое сообщение в группе
-    original_message = message.reply_to_message
-    if not original_message or original_message.from_user.id == bot.get_me().id:
-        return None # Это системное сообщение бота, игнорируем
-
-    # Ищем кандидата по спискам пересланных сообщений
-    for user_chat_id, messages in forwarding_users.items():
-        if original_message.message_id in messages:
-            return user_chat_id
-
-    # Если ничего не найдено, ищем по нику (на случай старых анкет)
-    username_part = f'@{original_message.forward_from.username}'
-    for uid, data in list(user_data.items()):
-        if data['telegram_username'] == username_part:
-            return uid
-    return None
+admin_reports_map = {}  # Связь сообщений-анкет в группе с кандидатами
 
 
 @bot.message_handler(commands=['start'])
@@ -202,12 +171,10 @@ def get_experience(message):
         f"⏳ Стаж: {experience_text}"
     )
 
+    # ⚡️ Самое важное изменение здесь
+    # Сохраняем связь системного сообщения в группе с кандидатом
     sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report)
-
-    # ⚡️ Самое важное изменение
-    # Мы сохраняем список всех сообщений этого кандидата в группе.
-    # Теперь админ может ответить на ЛЮБОЕ его сообщение, а не только на системную анкету.
-    forwarding_users.setdefault(chat_id, []).append(sent_admin_msg.message_id)
+    admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
 
     del user_data[chat_id]
 
@@ -215,7 +182,7 @@ def get_experience(message):
     bot.send_message(chat_id, final_text_user)
 
 
-# *** ГЛАВНЫЙ ОБРАБОТЧИК ***
+# *** ОБРАБОТЧИК ОТВЕТОВ АДМИНА ***
 @bot.message_handler(func=lambda m: True, content_types=[
     'text', 
     'photo',
@@ -276,25 +243,7 @@ def main_router(message):
             message.message_id
         )
 
-        # Добавляем кнопку ответа под этим сообщением
-        keyboard = types.InlineKeyboardMarkup(row_width=1)
-        button = types.InlineKeyboardButton(text='✉️ Ответить кандидату', callback_data=f'reply_{chat_id}')
-        keyboard.add(button)
-
-        def attach_button():
-            try:
-                # Прикрепляем кнопку через задержку, т.к. Telegram иногда блокирует моментальное редактирование
-                bot.edit_message_reply_markup(
-                    GROUP_CHAT_ID,
-                    forwarded_message.message_id,
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                print(f'[ERROR] Не удалось прикрепить кнопку: {e}')
-        
-        Timer(1.5, attach_button).start()  # Задержка 1.5 секунды
-
-        # Запоминаем это сообщение, чтобы админ мог нажать кнопку
+        # Запоминаем это сообщение, чтобы админ смог нажать кнопку ответа
         forwarding_users[chat_id].append(forwarded_message.message_id)
 
     # Если человек написал что-то рандомное вне анкеты
@@ -302,57 +251,67 @@ def main_router(message):
         bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
 
 
-# Обработчик нажатия кнопки ✉️ Ответить кандидату
+# Обработчик нажатия кнопки ✉️ Ответить кандидату под любым его сообщением
 @bot.callback_query_handler(func=lambda call: True)
 def answer_to_candidate(call):
-    candidate_id = get_user_chat_id(call)
+    candidate_id = int(call.data.split('_')[1])  # Извлекаем ID кандидата
     send_reply(call.message, candidate_id)
 
 
-# Обработчик ответов администратора в группе
+# Главный обработчик ответов администратора в группе
 @bot.message_handler(func=lambda m: m.chat.id == GROUP_CHAT_ID and m.reply_to_message)
 def answer_from_group(message):
-    candidate_id = get_user_chat_id(message)
-    send_reply(message, candidate_id)
-
-
-def send_reply(admin_message, target_chat_id):
     """
-    Универсальная функция отправки ответа кандидату.
+    Этот обработчик срабатывает, когда администратор отвечает (Reply)
+    на любое сообщение внутри группы.
     """
-    if not target_chat_id:
+    # Проверка, является ли администратор автором сообщения
+    if message.from_user.id not in ADMIN_IDS:
         return
 
-    full_text = f"✉️ Ответ от администрации:\n\n{admin_message.text}"
+    original_message = message.reply_to_message
 
-    # Отправляем кандидату
-    try:
-        if admin_message.content_type == 'text':
-            bot.send_message(target_chat_id, full_text)
-        elif admin_message.content_type == 'photo':
-            file_id = admin_message.photo[-1].file_id; caption = admin_message.caption or ''
-            bot.send_photo(target_chat_id, file_id, caption=full_text)
-        elif admin_message.content_type == 'video':
-            file_id = admin_message.video.file_id; caption = admin_message.caption or ''
-            bot.send_video(target_chat_id, file_id, caption=full_text)
-        elif admin_message.content_type == 'document':
-            file_id = admin_message.document.file_id; caption = admin_message.caption or ''
-            bot.send_document(target_chat_id, file_id, caption=full_text)
-        elif admin_message.content_type == 'voice':
-            file_id = admin_message.voice.file_id
-            bot.send_voice(target_chat_id, file_id, caption=full_text)
-        elif admin_message.content_type == 'sticker':
-            file_id = admin_message.sticker.file_id
-            bot.send_sticker(target_chat_id, file_id)
+    # Вариант А: Админ ответил на системную анкету (сообщение бота).
+    # Мы ищем его через словарь admin_reports_map.
+    target_chat_id = admin_reports_map.get(original_message.message_id, {}).get('user_chat_id')
+
+    # Вариант Б: Админ ответил на прямое сообщение кандидата (его фото/текст/голосовое),
+    # которые были переадресованы после завершения анкеты.
+    # Мы ищем его через список всех сообщений кандидата.
+    if not target_chat_id and original_message.forward_date:
+        for uid, messages in forwarding_users.items():
+            if original_message.message_id in messages:
+                target_chat_id = uid
+                break
+
+    # Вариант В: Страховка. На случай если вдруг все связи потерялись.
+    # Парсим никнейм из текста анкеты вручную.
+    if not target_chat_id:
+        username_part = original_message.text.split('@')[1].split(')')[0]
+        for uid, data in list(user_data.items()):
+            if data['telegram_username'].endswith(username_part):
+                target_chat_id = uid
+                break
+
+    # Отправляем ответ кандидату
+    if target_chat_id:
+        full_text = f"✉️ Ответ от администрации:\n\n{message.text}"
+
+        # Отправляем кандидату
+        try:
+            if message.content_type == 'text':
+                bot.send_message(target_chat_id, full_text)
+            elif message.content_type == 'photo':
+                file_id = message.photo[-1].file_id; caption = message.caption or ''
+                bot.send_photo(target_chat_id, file_id, caption=full_text)
+            elif message_content := getattr(message, message.content_type): # video/document/voice/sticker
+                file_id = getattr(message_content, 'file_id')
+                method = getattr(bot, f'send_{message.content_type}')
+                method(target_chat_id, file_id, caption=full_text)
             
-        # Уведомление администратору о доставке
-        bot.reply_to(admin_message, "🗣 Сообщение доставлено.", parse_mode=None)
+            # Уведомление администратору о доставке
+            bot.reply_to(message, "🗣 Сообщение доставлено.", parse_mode=None)
 
-    except Exception as e:
-        print(f"[ERROR] Ошибка доставки: {e}")
-        bot.reply_to(admin_message, "🚫 Не удалось доставить сообщение.", parse_mode=None)
-
-
-if __name__ == '__main__':
-    print("Бот запущен...")
-    bot.infinity_polling()
+        except Exception as e:
+            print(f"[ERROR] Ошибка доставки: {e}")
+            bot.reply_to(message, "🚫 Не удалось доставить сообщение.", parse_mode=None)
