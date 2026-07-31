@@ -1,11 +1,10 @@
 import telebot
 from telebot import types
-from threading import Timer # Для задержки кнопок
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
+BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
-ADMIN_IDS = [123456789]                 # ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID
+ADMIN_IDS = [YOUR_TELEGRAM_ID]                 # ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -22,16 +21,16 @@ def get_user_chat_id(message):
     if isinstance(message, int): # Передан просто ID чата
         return message
 
-    callback_data = getattr(message, 'data', None)
-    if callback_data and callback_data.startswith('reply_'):
-        return int(callback_data.split('_')[1])
+    callback_data = getattr(message, "data", None)
+    if callback_data and callback_data.startswith("reply_"):
+        return int(callback_data.split("_")[1])
     
     original_message = message.reply_to_message
     if not original_message or original_message.from_user.id == bot.get_me().id:
         return None # Это системное сообщение бота, игнорируем
 
     # Вариант А: Ответ на системную заявку (сообщение бота)
-    target_chat_id = admin_reports_map.get(original_message.message_id, {}).get('user_chat_id')
+    target_chat_id = admin_reports_map.get(original_message.message_id, {}).get("user_chat_id")
 
     # Вариант Б: Ответ на прямое сообщение кандидата (его фото/текст/голосовое)
     for uid, messages in forwarding_users.items():
@@ -39,22 +38,13 @@ def get_user_chat_id(message):
             target_chat_id = uid
             break
 
-    # Вариант В: Страховка. Парсим никнейм вручную.
-    # На случай, если вдруг все связи потерялись.
-    if not target_chat_id:
-        username_part = original_message.text.split('@')[1].split(')')[0]
-        for uid, data in user_data.items():
-            if data['telegram_username'].endswith(username_part):
-                target_chat_id = uid
-                break
-
     return target_chat_id
 
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=["start"])
 def handle_start(message):
     """Запускает опрос."""
-    if message.chat.type != 'private':
+    if message.chat.type != "private":
         return
 
     chat_id = message.chat.id
@@ -63,63 +53,73 @@ def handle_start(message):
     if chat_id in user_data:
         del user_data[chat_id]
 
-    telegram_username = f'@{message.from_user.username}' if message.from_user.username else '@не_указан'
+    telegram_username = f"@{message.from_user.username}" if message.from_user.username else "@не_указан"
     
     user_data[chat_id] = {
-        'name': None,
-        'age': None,
-        'donate': None,
-        'discord': None,
-        'microphone': None,
-        'hours_per_day': None,
-        'pve_rating': None,
-        'pvp_rating': None,
-        'experience': None,
-        'telegram_username': telegram_username  
+        "name": None,
+        "age": None,
+        "donate": None,
+        "discord": None,
+        "microphone": None,
+        "hours_per_day": None,
+        "pve_rating": None,
+        "pvp_rating": None,
+        "experience": None,
+        "telegram_username": telegram_username,
     }
 
-    bot.send_message(chat_id, 'Привет! Как тебя зовут?', reply_markup=types.ReplyKeyboardRemove())
-    bot.register_next_step_handler(message, process_poll)
+    markup = types.ReplyKeyboardRemove()
+    bot.send_message(chat_id, "Привет! Как тебя зовут?", reply_markup=markup)
 
 
 def process_poll(message):
     """
-    Универсальный обработчик всех шагов анкеты.
+    Универсальный обработчик всей анкеты.
     Он автоматически определяет, какой вопрос сейчас актуален.
     """
     chat_id = message.chat.id
 
-    # ⚠️ Блок защиты от команд внутри анкеты
-    # Если человек написал /start или любую другую команду
-    if '/start' in message.text.lower() or '/' in message.text[:1]:
-        # Удаляем старые данные, чтобы не было путаницы
-        if chat_id in user_data:
-            del user_data[chat_id]
-        
-        # Предупреждаем человека
+    # Если человек случайно нажал /start внутри опроса
+    if "/start" in message.text.lower() and chat_id in user_data:
         bot.send_message(
             chat_id,
-            "Ты начал заполнять анкету, но отправил команду.\n"
-            "Если хочешь продолжить, напиши ответ на последний вопрос:\n\n"
-            + _get_current_question(chat_id),
-            parse_mode='HTML'
+            "<b>Внимание!</b>\nТы уже заполняешь анкету.\n"
+            "Если хочешь начать заново — напиши слово <code>Сброс</code>. "
+            "А если продолжить — ответь на последний вопрос.",
+            parse_mode="HTML",
         )
         return
 
-    # ⚡️ Определяем текущий шаг
-    current_field = next((
-        field for field in [
-            'name',
-            'age',
-            'donate',
-            'discord',
-            'microphone',
-            'pve_rating',
-            'pvp_rating',
-            'hours_per_day',
-            'experience'
-        ] if user_data.get(chat_id).get(field) is None
-    ), None)
+    # ⚠️ Блок защиты от команд внутри анкеты
+    # Если человек написал любую другую команду (/help, /stop и т.п.)
+    if "/" in message.text[:1]:
+        bot.send_message(
+            chat_id,
+            "Пожалуйста, продолжай отвечать на вопросы анкеты. "
+            "Любые другие команды будут проигнорированы до завершения заполнения.",
+            parse_mode=None,
+        )
+        return
+
+    # 🔑 Определяем текущее незаполненное поле
+    current_field = next(
+        (
+            field
+            for field in [
+                "name",
+                "age",
+                "donate",
+                "discord",
+                "microphone",
+                "pve_rating",
+                "pvp_rating",
+                "hours_per_day",
+                "experience",
+            ]
+            if user_data.get(chat_id, {}).get(field) is None
+        ),
+        None,
+    )
 
     # Пользователь ещё не начал анкету
     if current_field is None:
@@ -128,58 +128,69 @@ def process_poll(message):
 
     try:
         # Проверки валидности ответов
-        if current_field == 'age':
+        if current_field == "age":
             age = int(message.text.strip())
             if age <= 10:
-                raise ValueError("Вы слишком молоды")
+                raise ValueError("Вы слишком молоды.")
         
-        elif current_field.endswith('_rating'): # pve_rating или pvp_rating
+        elif current_field.endswith("_rating"):  # pve_rating или pvp_rating
             rating = int(message.text.strip())
             if not (1 <= rating <= 10):
-                raise ValueError()
+                raise ValueError("Нужно ввести число от 1 до 10!")
 
         # Записываем ответ
         user_data[chat_id][current_field] = message.text.strip().capitalize()
     
     except Exception as e:
-        error_text = str(e) or 'Пожалуйста, введите корректные данные.'
+        error_text = str(e) or "Пожалуйста, введите корректные данные."
         bot.send_message(
             chat_id,
-            f"<b>Ошибка:</b>\n{error_text}\n\n" +
-            _get_current_question(chat_id),
-            parse_mode='HTML'
+            f"<b>Ошибка:</b>\n{error_text}\n\n"
+            + _get_current_question(current_field),
+            parse_mode="HTML",
         )
         return
 
     # Переход к следующему шагу
     handlers = {
-        'name': lambda msg: bot.send_message(msg.chat.id, 'Сколько тебе лет?'),
-        'age': lambda msg: bot.send_message(msg.chat.id, 'А какой у вас донат в игре?'),
-        'donate': lambda msg: bot.send_message(msg.chat.id, 'Ваш дискорд?'),
-        'discord': lambda msg: bot.send_message(msg.chat.id, 'Есть ли у тебя микрофон? (Да/Нет)'),
-        'microphone': lambda msg: bot.send_message(msg.chat.id, 'Оцените своё ПвЕ по шкале от 1 до 10.'),
-        'pve_rating': lambda msg: bot.send_message(msg.chat.id, 'Теперь оцените своё ПвП по шкале от 1 до 10.'),
-        'pvp_rating': lambda msg: bot.send_message(msg.chat.id, 'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")'),
-        'hours_per_day': lambda msg: bot.send_message(msg.chat.id, 'Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)')
+        "name": lambda msg: bot.send_message(msg.chat.id, "Сколько тебе лет?"),
+        "age": lambda msg: bot.send_message(msg.chat.id, "Какой у вас донат в игре?"),
+        "donate": lambda msg: bot.send_message(msg.chat.id, "Ваш дискорд?"),
+        "discord": lambda msg: bot.send_message(
+            msg.chat.id, "Есть ли у тебя микрофон? (Да/Нет)"
+        ),
+        "microphone": lambda msg: bot.send_message(
+            msg.chat.id, "Оцените своё ПвЕ по шкале от 1 до 10."
+        ),
+        "pve_rating": lambda msg: bot.send_message(
+            msg.chat.id, "Теперь оцените своё ПвП по шкале от 1 до 10."
+        ),
+        "pvp_rating": lambda msg: bot.send_message(
+            msg.chat.id, "Сколько часов в день ты можешь играть?\n(Например: 3 или \"пару часов\")"
+        ),
+        "hours_per_day": lambda msg: bot.send_message(
+            msg.chat.id,
+            "Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)",
+        ),
     }
 
     handler = handlers[current_field](message)
 
     # Последний шаг — отправка заявки в группу
-    if current_field == 'experience':
+    if current_field == "experience":
         experience_text = message.text.strip()
 
         final_text_user = (
-            f'Спасибо за ответы, <b>{user_data[chat_id]["name"]}</b>!\n\n'
-            f'<b>Возраст</b>: {user_data[chat_id]["age"]}\n'
-            f'<b>Донат</b>: {user_data[chat_id]["donate"]}\n'
-            f'<b>Дискорд</b>: {user_data[chat_id]["discord"]}\n'
-            f'<b>Микрофон</b>: {user_data[chat_id]["microphone"]}\n'
-            f'<b>Часов в день</b>: {user_data[chat_id]["hours_per_day"]}\n'
-            f'<b>🎮 ПвЕ</b>: {user_data[chat_id]["pve_rating"]}/10\n'
-            f'<b>🔥 ПвП</b>: {user_data[chat_id]["pvp_rating"]}/10\n'
-            f'<b>Стаж игры</b>: {experience_text}.\n\n'
-            '<i>Твоя заявка принята к рассмотрению!</i>'
+            f"Спасибо за ответы, *{user_data[chat_id]['name']}*!\n\n"
+            f"Возраст: `{user_data[chat_id]['age']}`\n"
+            f"Донат: `{user_data[chat_id]['donate']}`\n"
+            f"Дискорд: `{user_data[chat_id]['discord']}`\n"
+            f"Микрофон: `{user_data[chat_id]['microphone']}`\n"
+            f"ПвЕ: `{user_data[chat_id]['pve_rating']}/10`\n"
+            f"ПвП: `{user_data[chat_id]['pvp_rating']}/10`\n"
+            f"Часов в день: `{user_data[chat_id]['hours_per_day']}`\n"
+            f"Стаж игры: `{experience_text}`.\n\n"
+            "*Твоя заявка принята к рассмотрению!*"
         )
 
         admin_report = (
@@ -199,70 +210,56 @@ def process_poll(message):
 
         # Сохраняем связь между сообщением-заявкой и кандидатом
         # Чтобы администратор мог нажать Reply прямо под ней
-        admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
+        admin_reports_map[sent_admin_msg.message_id] = {"user_chat_id": chat_id}
 
         # Включаем режим свободной переписки
         # Все последующие сообщения будут уходить в группу
         forwarding_users.setdefault(chat_id, []).append(sent_admin_msg.message_id)
 
         # Очищаем словарь анкеты, оставив только ссылку на чат
-        user_data[chat_id] = {'telegram_username': user_data[chat_id]['telegram_username']}
+        user_data[chat_id] = {"telegram_username": user_data[chat_id]["telegram_username"]}
 
         # Отвечаем кандидату
-        bot.send_message(chat_id, final_text_user, parse_mode='HTML')
+        bot.send_message(chat_id, final_text_user, parse_mode="Markdown")
 
 
-def _get_current_question(chat_id):
+def _get_current_question(field_name: str):
     """
     Вспомогательная функция для получения текущего вопроса.
     Нужна для вывода ошибки пользователю.
     """
-    current_field = next((
-        field for field in [
-            'name',
-            'age',
-            'donate',
-            'discord',
-            'microphone',
-            'pve_rating',
-            'pvp_rating',
-            'hours_per_day',
-            'experience'
-        ] if user_data.get(chat_id).get(field) is None
-    ))
-
     questions = {
-        'name': 'Как тебя зовут?',
-        'age': 'Сколько тебе лет?',
-        'donate': 'Какой у вас донат в игре?',
-        'discord': 'Ваш дискорд?',
-        'microphone': 'Есть ли у тебя микрофон? (Да/Нет)',
-        'pve_rating': 'Оцените своё ПвЕ по шкале от 1 до 10.',
-        'pvp_rating': 'Теперь оцените своё ПвП по шкале от 1 до 10.',
-        'hours_per_day': 'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")',
-        'experience': 'Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)'
+        "name": "Как тебя зовут?",
+        "age": "Сколько тебе лет?",
+        "donate": "Какой у вас донат в игре?",
+        "discord": "Ваш дискорд?",
+        "microphone": "Есть ли у тебя микрофон? (Да/Нет)",
+        "pve_rating": "Оцените своё ПвЕ по шкале от 1 до 10.",
+        "pvp_rating": "Теперь оцените своё ПвП по шкале от 1 до 10.",
+        "hours_per_day": "Сколько часов в день ты можешь играть?\n(Например: 3 или \"пару часов\")",
+        "experience": "Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)",
     }
 
-    return f"<b>{questions[current_field]}</b>"
+    return f"*Вопрос:* {questions[field_name]}"
 
 
-# *** ОБРАБОТЧИК РЕЖИМА ПЕРЕСЫЛКИ ***
+# *** ГЛАВНЫЙ ОБРАБОТЧИК ***
 @bot.message_handler(func=lambda m: True, content_types=[
-    'text', 
-    'photo',
-    'video',
-    'document',
-    'voice',
-    'sticker',
+    "text",
+    "photo",
+    "video",
+    "document",
+    "voice",
+    "sticker",
 ])
 def main_router(message):
     """
-    Работает только в личных сообщениях.
+    Главный обработчик всех личных сообщений.
     Либо завершает анкету, либо пересылает сообщения в группу.
     """
 
     # Игнорируем всё из группы
-    if message.chat.type != 'private':
+    if message.chat.type != "private":
         return
 
     chat_id = message.chat.id
@@ -272,36 +269,36 @@ def main_router(message):
     # Но удаляем все поля кроме telegram_username
     is_in_poll = chat_id in user_data
 
-    # Если это /start — запускаем анкету заново
-    if '/start' in message.text.lower():
-        handle_start(message)
-        return
+    # Если это текстовое сообщение
+    if message.content_type == "text":
+        # Обработка текста внутри анкеты
+        if is_in_poll:
+            process_poll(message)
+            return
 
-    # Если пользователь заполняет анкету — обрабатывает её универсально
-    if is_in_poll:
-        # Вызов универсального обработчика
-        process_poll(message)
-        return
+        # Любой другой текст при пустом словаре запускает старт
+        else:
+            handle_start(message)
+            return
 
     # ⚡️ Режим свободной переписки
     # После завершения анкеты каждое сообщение уходит в группу
+    # Сюда попадают также голосовые, фото и стикеры
     forwarded_message = bot.forward_message(GROUP_CHAT_ID, chat_id, message.message_id)
 
-    # Прикрепляем кнопку ответа с задержкой
+    # Прикрепляем кнопку «Ответить» с задержкой
     keyboard = types.InlineKeyboardMarkup(row_width=1)
-    button = types.InlineKeyboardButton(text='✉️ Ответить кандидату', callback_data=f'reply_{chat_id}')
+    button = types.InlineKeyboardButton(text="✉️ Ответить кандидату", callback_data=f"reply_{chat_id}")
     keyboard.add(button)
 
     def attach_button():
         try:
             bot.edit_message_reply_markup(
-                GROUP_CHAT_ID,
-                forwarded_message.message_id,
-                reply_markup=keyboard
+                GROUP_CHAT_ID, forwarded_message.message_id, reply_markup=keyboard
             )
         except Exception as e:
-            print(f'[ERROR] Не удалось прикрепить кнопку: {e}')
-    
+            print(f"[ERROR] Не удалось прикрепить кнопку: {e}")
+
     Timer(1.5, attach_button).start()
 
     # Запоминаем это сообщение, чтобы админ мог нажать кнопку
@@ -331,19 +328,24 @@ def answer_from_group(message):
 
     # Отправляем ответ кандидату
     if candidate_id:
-        full_text = f"✉️ <b>Ответ от администрации</b>:\n\n{message.text}", parse_mode='HTML'
+        full_text = f"✉️ *Ответ от администрации*:\n\n{message.text}", parse_mode="Markdown"
 
         try:
-            if message.content_type == 'text':
+            # Текст
+            if message.content_type == "text":
                 bot.send_message(candidate_id, *full_text)
-            elif message_content := getattr(message, message.content_type):
-                file_id = getattr(message_content, 'file_id')
-                method = getattr(bot, f'send_{message.content_type}')
-                kwargs = {}
-                if hasattr(message, 'caption') and message.caption:
-                    kwargs['caption'] = full_text[0]
-                method(candidate_id, file_id, **kwargs)
             
+            # Медиа
+            elif hasattr(message, message.content_type):
+                file_id = getattr(getattr(message, message.content_type), "file_id")
+                method = getattr(bot, f"send_{message.content_type}")
+                
+                kwargs = {}
+                if hasattr(message, "caption") and message.caption:
+                    kwargs["caption"] = full_text[0]
+
+                method(candidate_id, file_id, **kwargs)
+
             # Уведомление администратору о доставке
             bot.reply_to(message, "🗣 Сообщение доставлено.", parse_mode=None)
 
@@ -351,6 +353,6 @@ def answer_from_group(message):
             print(f"[ERROR] Ошибка доставки: {e}")
             bot.reply_to(message, "🚫 Не удалось доставить сообщение.", parse_mode=None)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Бот запущен...")
-    bot.infinity_polling()
+    bot.infinity_polling(skip_pending=True)
