@@ -1,11 +1,11 @@
 import telebot
 from telebot import types
-from threading import Timer # Для задержки кнопок
+from threading import Timer  # Для задержки кнопок
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ВАШ ТОКЕН!
-GROUP_CHAT_ID = -1004291446609                     # ВАШ ID ГРУППЫ!
-ADMIN_IDS = [123456789]                 # ВАШ TELEGRAM ID!
+BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw'  # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
+GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
+ADMIN_IDS = [123456789]                 # ДОБАВЬТЕ СВОИ TELEGRAM ID
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -14,14 +14,34 @@ forwarding_users = {}  # Словарь формата {chat_id_кандидат
 admin_reports_map = {}  # Связь сообщений-анкет в группе с кандидатами
 
 
+def find_candidate_by_username(username):
+    """Функция ищет chat-id кандидата по его telegram-username."""
+    for uid, data in user_data.items():
+        if username == data.get('telegram_username'):
+            return uid
+    
+    # Проверим также тех, кто уже завершил анкету (в словаре forwarding_users)
+    for uid, messages in forwarding_users.items():
+        if len(messages) > 0 and '@' + username in str(user_data.get(uid)):
+            return uid
+    return None
+
+
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    """Сразу начинаем опрос."""
+    """
+    Сразу начинаем опрос или перезапускаем его,
+    если пользователь случайно нажал /start посреди анкеты.
+    """
     if message.chat.type != 'private':
         return
 
     chat_id = message.chat.id
-    
+
+    # Если пользователь находится в процессе опроса — удаляем старые данные
+    if chat_id in user_data:
+        del user_data[chat_id]
+
     telegram_username = f'@{message.from_user.username}' if message.from_user.username else '@не_указан'
     
     user_data[chat_id] = {
@@ -60,7 +80,7 @@ def check_age(message):
         bot.send_message(chat_id, 'Отлично!\nА какой у вас донат в игре?')
         bot.register_next_step_handler(message, get_donate)
 
-    except ValueError as e:
+    except Exception as e:
         error_text = str(e) or 'Пожалуйста, введи число.'
         bot.send_message(chat_id, error_text)
         bot.register_next_step_handler(message, check_age)
@@ -112,7 +132,10 @@ def get_pvp_rating(message):
             raise ValueError('Нужно ввести число от 1 до 10!')
 
         user_data[chat_id]['pvp_rating'] = rating
-        bot.send_message(chat_id, 'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")')
+        bot.send_message(
+            chat_id,
+            'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")'
+        )
         bot.register_next_step_handler(message, get_hours)
 
     except ValueError as e:
@@ -172,146 +195,9 @@ def get_experience(message):
     )
 
     # ⚡️ Самое важное изменение здесь
-    # Сохраняем связь системного сообщения в группе с кандидатом
+    # Мы сохраняем связь системного сообщения в группе с кандидатом
     sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report)
-    admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
 
-    del user_data[chat_id]
-
-    # Отвечаем кандидату
-    bot.send_message(chat_id, final_text_user)
-
-
-# *** ОБРАБОТЧИК ОТВЕТОВ АДМИНА ***
-@bot.message_handler(func=lambda m: True, content_types=[
-    'text', 
-    'photo',
-    'video',
-    'document',
-    'voice',
-    'sticker',
-])
-def main_router(message):
-    """
-    Работает только в личных сообщениях.
-    Либо завершает анкету, либо пересылает сообщения в группу.
-    """
-
-    # Игнорируем всё из группы
-    if message.chat.type != 'private':
-        return
-
-    chat_id = message.chat.id
-
-    # Если это /start — запускаем анкету заново
-    if '/start' in message.text.lower():
-        handle_start(message)
-        return
-
-    # Проверим статус пользователя
-    is_in_poll = chat_id in forwarding_users and len(forwarding_users[chat_id]) > 0
-
-    # Если пользователь заполняет анкету — продолжаем цепочку
-    if chat_id in user_data and user_data[chat_id].get('name') is not None:
-        # Проверим текущий шаг
-        if user_data[chat_id].get('age') is None:
-            check_age(message)
-        elif user_data[chat_id].get('donate') is None:
-            get_donate(message)
-        elif user_data[chat_id].get('discord') is None:
-            get_discord(message)
-        elif user_data[chat_id].get('microphone') is None:
-            get_microphone(message)
-        elif user_data[chat_id].get('pve_rating') is None:
-            get_pve_rating(message)
-        elif user_data[chat_id].get('pvp_rating') is None:
-            get_pvp_rating(message)
-        elif user_data[chat_id].get('hours_per_day') is None:
-            get_hours(message)
-        else:
-            # Последний шаг перед отправкой анкеты
-            get_experience(message)
-        
-        return
-
-    # Пользователь завершил анкету → включаем режим свободной переписки
-    # Все его сообщения будут уходить в вашу группу
-    if is_in_poll:
-        forwarded_message = bot.forward_message(
-            GROUP_CHAT_ID,
-            chat_id,
-            message.message_id
-        )
-
-        # Запоминаем это сообщение, чтобы админ смог нажать кнопку ответа
-        forwarding_users[chat_id].append(forwarded_message.message_id)
-
-    # Если человек написал что-то рандомное вне анкеты
-    else:
-        bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
-
-
-# Обработчик нажатия кнопки ✉️ Ответить кандидату под любым его сообщением
-@bot.callback_query_handler(func=lambda call: True)
-def answer_to_candidate(call):
-    candidate_id = int(call.data.split('_')[1])  # Извлекаем ID кандидата
-    send_reply(call.message, candidate_id)
-
-
-# Главный обработчик ответов администратора в группе
-@bot.message_handler(func=lambda m: m.chat.id == GROUP_CHAT_ID and m.reply_to_message)
-def answer_from_group(message):
-    """
-    Этот обработчик срабатывает, когда администратор отвечает (Reply)
-    на любое сообщение внутри группы.
-    """
-    # Проверка, является ли администратор автором сообщения
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    original_message = message.reply_to_message
-
-    # Вариант А: Админ ответил на системную анкету (сообщение бота).
-    # Мы ищем его через словарь admin_reports_map.
-    target_chat_id = admin_reports_map.get(original_message.message_id, {}).get('user_chat_id')
-
-    # Вариант Б: Админ ответил на прямое сообщение кандидата (его фото/текст/голосовое),
-    # которые были переадресованы после завершения анкеты.
-    # Мы ищем его через список всех сообщений кандидата.
-    if not target_chat_id and original_message.forward_date:
-        for uid, messages in forwarding_users.items():
-            if original_message.message_id in messages:
-                target_chat_id = uid
-                break
-
-    # Вариант В: Страховка. На случай если вдруг все связи потерялись.
-    # Парсим никнейм из текста анкеты вручную.
-    if not target_chat_id:
-        username_part = original_message.text.split('@')[1].split(')')[0]
-        for uid, data in list(user_data.items()):
-            if data['telegram_username'].endswith(username_part):
-                target_chat_id = uid
-                break
-
-    # Отправляем ответ кандидату
-    if target_chat_id:
-        full_text = f"✉️ Ответ от администрации:\n\n{message.text}"
-
-        # Отправляем кандидату
-        try:
-            if message.content_type == 'text':
-                bot.send_message(target_chat_id, full_text)
-            elif message.content_type == 'photo':
-                file_id = message.photo[-1].file_id; caption = message.caption or ''
-                bot.send_photo(target_chat_id, file_id, caption=full_text)
-            elif message_content := getattr(message, message.content_type): # video/document/voice/sticker
-                file_id = getattr(message_content, 'file_id')
-                method = getattr(bot, f'send_{message.content_type}')
-                method(target_chat_id, file_id, caption=full_text)
-            
-            # Уведомление администратору о доставке
-            bot.reply_to(message, "🗣 Сообщение доставлено.", parse_mode=None)
-
-        except Exception as e:
-            print(f"[ERROR] Ошибка доставки: {e}")
-            bot.reply_to(message, "🚫 Не удалось доставить сообщение.", parse_mode=None)
+    # Сохраняем все способы найти этого человека в группе
+    # Это либо системная анкета, либо любые его последующие сообщения
+    forwarding_users.
