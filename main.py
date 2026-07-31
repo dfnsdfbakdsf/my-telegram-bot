@@ -2,19 +2,19 @@ import telebot
 from telebot import types
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8935278169:AAFfVupDDFrp2rHufzXxvw" # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
+BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
 ADMIN_IDS = [123456789]                 # ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
-user_data = {}
+user_data = {}  # Хранит данные пользователя во время заполнения анкеты
 forwarding_users = {}  # Словарь для режима пересылки сообщений после анкеты
 
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    """Сразу начинаем анкету."""
+    """Сразу начинаем опрос."""
     if message.chat.type != 'private':
         return
 
@@ -26,14 +26,13 @@ def handle_start(message):
         'name': None,
         'age': None,
         'donate': None,
-        'experience': None,
         'discord': None,
         'microphone': None,
         'hours_per_day': None,
         'pve_rating': None,
         'pvp_rating': None,
-        'telegram_username': telegram_username,
-        'forwarded_messages': []  # Список ID сообщений, которые он напишет после анкеты
+        'experience': None,
+        'telegram_username': telegram_username  
     }
 
     bot.send_message(chat_id, 'Привет! Как тебя зовут?')
@@ -43,7 +42,7 @@ def handle_start(message):
 def get_name(message):
     chat_id = message.chat.id
     user_data[chat_id]['name'] = message.text.strip()
-    bot.send_message(chat_id, 'Сколько тебе лет?')
+    bot.send_message(chat_id, 'Сколько тебе лет?', reply_markup=types.ReplyKeyboardRemove())
     bot.register_next_step_handler(message, check_age)
 
 
@@ -90,15 +89,15 @@ def get_pve_rating(message):
     chat_id = message.chat.id
     try:
         rating = int(message.text)
-        if rating < 1 or rating > 10:
-            raise ValueError("Нужно ввести число от 1 до 10!")
+        if not (1 <= rating <= 10):
+            raise ValueError('Нужно ввести число от 1 до 10!')
 
         user_data[chat_id]['pve_rating'] = rating
         bot.send_message(chat_id, 'Теперь оцените своё ПвП по шкале от 1 до 10.')
         bot.register_next_step_handler(message, get_pvp_rating)
 
     except ValueError as e:
-        error_text = str(e) or 'Пожалуйста, введи число от 1 до 10!'
+        error_text = str(e)
         bot.send_message(chat_id, error_text)
         bot.register_next_step_handler(message, get_pve_rating)
 
@@ -107,30 +106,37 @@ def get_pvp_rating(message):
     chat_id = message.chat.id
     try:
         rating = int(message.text)
-        if rating < 1 or rating > 10:
-            raise ValueError("Нужно ввести число от 1 до 10!")
+        if not (1 <= rating <= 10):
+            raise ValueError('Нужно ввести число от 1 до 10!')
 
         user_data[chat_id]['pvp_rating'] = rating
         bot.send_message(chat_id, 'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")')
         bot.register_next_step_handler(message, get_hours)
 
     except ValueError as e:
-        error_text = str(e) or 'Пожалуйста, введи число от 1 до 10!'
+        error_text = str(e)
         bot.send_message(chat_id, error_text)
-        bot.register_next_step_handler(message, get_pvp_rating)
+        bot.register_next_button_handler(message, get_pvp_rating)
 
 
 def get_hours(message):
     chat_id = message.chat.id
     user_data[chat_id]['hours_per_day'] = message.text.strip()
-    bot.send_message(chat_id, 'Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)')
+    bot.send_message(
+        chat_id,
+        'Теперь скажи, сколько времени ты уже играешь в проект?\n(Например: 2 года, 5 месяцев)'
+    )
     bot.register_next_step_handler(message, get_experience)
 
 
 def get_experience(message):
-    """Финал анкеты и переход в режим свободного чата"""
+    """
+    Финал анкеты.
+    Отправляет заявку в группу и включает режим свободной переписки.
+    """
     chat_id = message.chat.id
     experience_text = message.text.strip()
+
     if not experience_text:
         bot.send_message(chat_id, 'Пожалуйста, напиши свой стаж.')
         bot.register_next_step_handler(message, get_experience)
@@ -151,13 +157,6 @@ def get_experience(message):
         'Твоя заявка принята к рассмотрению!'
     )
 
-    markup = types.InlineKeyboardMarkup()
-    url_button = types.InlineKeyboardButton(
-        text="📩 Написать кандидату",
-        url=f'tg://resolve?domain={user_data[chat_id]["telegram_username"].lstrip("@")}'
-    )
-    markup.add(url_button)
-
     admin_report = (
         "📋 НОВАЯ ЗАЯВКА 📋\n"
         f"👤 Имя: {user_data[chat_id]['name']} ({user_data[chat_id]['telegram_username']})\n"
@@ -167,20 +166,22 @@ def get_experience(message):
         f"🎤 Микрофон: {user_data[chat_id]['microphone']}\n"
         f"⏱️ Часов в день: {user_data[chat_id]['hours_per_day']}\n"
         f"🎮 ПвЕ: {user_data[chat_id]['pve_rating']}/10\n"
-        f"🔥 ПвП: {user_data[chat_id]['pvp_rating']}/10\n"
+        f"🔥 ПвП: {user[comment]: <>('chat_id')['pvp_rating']}/10\n"
         f"⏳ Стаж: {experience_text}."
     )
 
-    sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report, reply_markup=markup)
+    # Сохраняем ссылку на системное сообщение-заявку
+    sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report)
+    forwarding_users.setdefault(chat_id, []).append(sent_admin_msg.message_id)
 
-    # ✅ Сохраняем все способы найти этого человека в группе
-    # Это либо системная анкета, либо любые его последующие сообщения
-    user_data[chat_id]['forwarded_messages'].append(sent_admin_msg.message_id)
-
+    # Включаем режим свободного чата
     del user_data[chat_id]
 
+    # Отвечаем кандидату
+    bot.send_message(chat_id, final_text_user)
 
-# *** ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ОТ КАНДИДАТОВ ***
+
+# *** ГЛАВНЫЙ ОБРАБОТЧИК ***
 @bot.message_handler(func=lambda m: True, content_types=[
     'text', 
     'photo',
@@ -188,84 +189,72 @@ def get_experience(message):
     'document',
     'voice',
     'sticker',
-    'audio',
 ])
 def main_router(message):
     """
-    Работает только в личных чатах.
+    Работает только в личных сообщениях.
     Либо завершает анкету, либо пересылает сообщения в группу.
     """
 
-    # Игнорируем всё, что происходит вне личного чата
+    # Игнорируем всё из группы
     if message.chat.type != 'private':
         return
 
     chat_id = message.chat.id
 
-    # Если человек пишет /start во время заполнения анкеты → пропускаем
-    if '/start' in message.text and chat_id in user_data:
+    # Если это /start — запускаем анкету заново
+    if '/start' in message.text.lower():
+        handle_start(message)
         return
 
-    # ⚠️ Блок завершения анкеты
-    # Если анкета ещё не заполнена, продолжаем её
-    if chat_id in user_data and user_data[chat_id].get('name') is None:
-        # Проверка нужна, чтобы избежать повторного вызова при нажатии кнопки
-        if message.content_type == 'text' and message.text.startswith('/'):
-            return
-
-        # Продолжение цепочки вопросов
+    # Если пользователь заполняет анкету — продолжаем цепочку
+    if chat_id in user_data and user_data[chat_id].get('name'):
+        # Проверим текущий шаг
         if user_data[chat_id].get('age') is None:
-            bot.register_next_step_handler(message, check_age)
-            return
+            check_age(message)
         elif user_data[chat_id].get('donate') is None:
-            bot.register_next_step_handler(message, get_donate)
-            return
+            get_donate(message)
         elif user_data[chat_id].get('discord') is None:
-            bot.register_next_step_handler(message, get_discord)
-            return
+            get_discord(message)
         elif user_data[chat_id].get('microphone') is None:
-            bot.register_next_step_handler(message, get_microphone)
-            return
+            get_microphone(message)
         elif user_data[chat_id].get('pve_rating') is None:
-            bot.register_next_step_handler(message, get_pve_rating)
-            return
+            get_pve_rating(message)
         elif user_data[chat_id].get('pvp_rating') is None:
-            bot.register_next_step_handler(message, get_pvp_rating)
-            return
+            get_pvp_rating(message)
         elif user_data[chat_id].get('hours_per_day') is None:
-            bot.register_next_step_handler(message, get_hours)
-            return
-        elif user_data[chat_id].get('experience') is None:
-            bot.register_next_step_handler(message, get_experience)
-            return
+            get_hours(message)
+        else:
+            # Последний шаг перед отправкой анкеты
+            get_experience(message)
+        
+        return
 
-    # ⚠️ Блок свободной переписки
-    # После отправки анкеты каждое новое сообщение будет уходить в группу
-    # Мы сохраняем ID каждого такого сообщения, чтобы админ мог ответить на него
-    if chat_id not in forwarding_users:
-        forwarding_users[chat_id] = []
-
-    # Пересылка сообщения в группу
+    # Пользователь завершил анкету → включаем режим свободной переписки
+    # Все его сообщения будут уходить в группу
     forwarded_message = bot.forward_message(GROUP_CHAT_ID, chat_id, message.message_id)
 
-    # Создаём кнопку ответа именно на это сообщение
+    # Добавляем кнопку ответа под этим сообщением
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     button = types.InlineKeyboardButton(text='✉️ Ответить кандидату', callback_data=f'reply_{chat_id}')
     keyboard.add(button)
 
-    # Прикрепляем эту кнопку к сообщению
-    # Через несколько секунд она исчезнет, если нажать нельзя
-    try:
-        bot.edit_message_reply_markup(
-            GROUP_CHAT_ID,
-            forwarded_message.message_id,
-            reply_markup=keyboard
-        )
-    except Exception:
-        pass
+    # Прикрепляем её через несколько секунд, чтобы она успела появиться
+    def attach_button():
+        try:
+            bot.edit_message_reply_markup(
+                GROUP_CHAT_ID,
+                forwarded_message.message_id,
+                reply_markup=keyboard
+            )
+        except Exception:
+            pass  # Не страшно, если кнопка не прикрепилась
 
-    # Запоминаем ID этого сообщения, чтобы админ смог ответить на него
-    forwarding_users[chat_id].append(forwarded_message.message_id)
+    from threading import Timer
+    Timer(1.5, attach_button).start()  # Задержка нужна, т.к. Telegram иногда блокирует моментальное редактирование
+
+    # Запоминаем это сообщение, чтобы админ мог нажать кнопку
+    forwarding_users.setdefault(chat_id, []).append(forwarded_message.message_id)
 
 
 # Обработчик кнопок в группе
