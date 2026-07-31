@@ -1,4 +1,3 @@
-
 import telebot
 from telebot import types
 
@@ -10,10 +9,7 @@ FORWARD_CHAT_ID = -1004291446609                     # ID вашей групп�
 bot = telebot.TeleBot(BOT_TOKEN)
 user_data = {}
 admin_reports_map = {}
-
-# *** НОВЫЙ СЛОВАРЬ ДЛЯ РЕЖИМА ЧАТА ***
-# Хранит chat_id пользователей, которые включили отправку всех сообщений в группу
-forwarding_users = {}
+forwarding_users = {}  # Для режима пересылки сообщений после анкеты
 
 @bot.message_handler(commands=['start', 'help'])
 def handle_start_help(message):
@@ -39,50 +35,17 @@ def handle_start_help(message):
         'telegram_username': telegram_username  
     }
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
     btn_apply = types.KeyboardButton("✍️ Начать подачу заявки")
     btn_chat = types.KeyboardButton("💬 Написать в чат клана (без анкеты)")
     markup.add(btn_apply, btn_chat)
 
     bot.send_message(
         chat_id, 
-        'Привет! Что вы хотите сделать?', 
+        'Привет! Как тебя зовут?', 
         reply_markup=markup
     )
-
-@bot.message_handler(func=lambda m: m.text == "💬 Написать в чат клана (без анкеты)")
-def enable_forwarding_mode(message):
-    chat_id = message.chat.id
-    forwarding_users[chat_id] = True
-    
-    bot.send_message(
-        chat_id,
-        "🟢 Режим чата включен.\n"
-        "Теперь всё, что вы напишете мне (текст, фото, видео), "
-        f"будет автоматически отправлено в группу клана.\n\nЧтобы выключить, нажмите кнопку ниже.",
-        reply_markup=types.ReplyKeyboardRemove()
-    )
-    
-    stop_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    stop_markup.add(types.KeyboardButton("⛔ Завершить общение"))
-    bot.send_message(chat_id, "Ожидаю ваше сообщение...", reply_markup=stop_markup)
-
-@bot.message_handler(func=lambda m: m.text == "⛔ Завершить общение")
-def disable_forwarding_mode(message):
-    chat_id = message.chat.id
-    if chat_id in forwarding_users:
-        del forwarding_users[chat_id]
-        
-        start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
-        start_markup.add(types.KeyboardButton("✍️ Начать подачу заявки"), types.KeyboardButton("💬 Написать в чат клана (без анкеты)"))
-        
-        bot.send_message(
-            chat_id,
-            "🔴 Режим чата отключен.",
-            reply_markup=start_markup
-        )
-    else:
-        bot.send_message(chat_id, "Режим и так был выключен.", reply_markup=types.ReplyKeyboardRemove())
+    bot.register_next_step_handler(message, get_name)
 
 def get_name(message):
     chat_id = message.chat.id
@@ -94,11 +57,14 @@ def check_age(message):
     chat_id = message.chat.id
     try:
         age = int(message.text)
+        
         if age <= 10:
             raise ValueError("Вы слишком молоды")
+
         user_data[chat_id]['age'] = age
         bot.send_message(chat_id, 'Отлично!\nА какой у вас донат в игре?')
         bot.register_next_step_handler(message, get_donate)
+
     except ValueError as e:
         error_text = str(e) or 'Пожалуйста, введи число.'
         bot.send_message(chat_id, error_text)
@@ -107,6 +73,7 @@ def check_age(message):
 def get_donate(message):
     chat_id = message.chat.id
     user_data[chat_id]['donate'] = message.text.strip().capitalize()
+    
     bot.send_message(chat_id, 'Ваш дискорд?')
     bot.register_next_step_handler(message, get_discord)
 
@@ -119,6 +86,8 @@ def get_discord(message):
 def get_microphone(message):
     chat_id = message.chat.id
     user_data[chat_id]['microphone'] = message.text.strip().capitalize()
+    
+    # *** ИСПРАВЛЕНИЕ: Здесь был обрыв цепочки ***
     bot.send_message(chat_id, 'Оцените своё ПвЕ по шкале от 1 до 10.')
     bot.register_next_step_handler(message, get_pve_rating)
 
@@ -128,12 +97,15 @@ def get_pve_rating(message):
         rating = int(message.text)
         if rating < 1 or rating > 10:
             raise ValueError("Нужно ввести число от 1 до 10!")
+
         user_data[chat_id]['pve_rating'] = rating
         bot.send_message(chat_id, 'Теперь оцените своё ПвП по шкале от 1 до 10.')
         bot.register_next_step_handler(message, get_pvp_rating)
+
     except ValueError as e:
         error_text = str(e) or 'Пожалуйста, введи число от 1 до 10!'
         bot.send_message(chat_id, error_text)
+        # Возвращаемся на этот же шаг при ошибке
         bot.register_next_step_handler(message, get_pve_rating)
 
 def get_pvp_rating(message):
@@ -142,12 +114,15 @@ def get_pvp_rating(message):
         rating = int(message.text)
         if rating < 1 or rating > 10:
             raise ValueError("Нужно ввести число от 1 до 10!")
+
         user_data[chat_id]['pvp_rating'] = rating
         bot.send_message(chat_id, 'Сколько часов в день ты можешь играть?\n(Например: 3 или "пару часов")')
         bot.register_next_step_handler(message, get_hours)
+
     except ValueError as e:
         error_text = str(e) or 'Пожалуйста, введи число от 1 до 10!'
         bot.send_message(chat_id, error_text)
+        # Возвращаемся на этот же шаг при ошибке
         bot.register_next_step_handler(message, get_pvp_rating)
 
 def get_hours(message):
@@ -159,6 +134,7 @@ def get_hours(message):
 def get_experience(message):
     """Сбор всей анкеты и отправка её в группу."""
     chat_id = message.chat.id
+
     experience_text = message.text.strip()
     if not experience_text:
         bot.send_message(chat_id, 'Пожалуйста, напиши свой стаж.')
@@ -177,9 +153,7 @@ def get_experience(message):
         f'🎮 ПвЕ: {user_data[chat_id]["pve_rating"]}/10\n'
         f'🔥 ПвП: {user_data[chat_id]["pvp_rating"]}/10\n'
         f'Стаж игры: {experience_text}.\n\n'
-        'Твоя заявка принята к рассмотрению!\n\n'
-        '*Важно:* Теперь вы можете присылать скриншоты или голосовые прямо сюда, '
-        'а мы увидим их в группе. Для этого нажмите "Написать в чат клана".'
+        'Твоя заявка принята к рассмотрению!'
     )
     
     markup = types.InlineKeyboardMarkup()
@@ -202,7 +176,7 @@ def get_experience(message):
         f"⏳ Стаж: {experience_text}."
     )
 
-    bot.send_message(chat_id, final_text_user, parse_mode='Markdown')
+    bot.send_message(chat_id, final_text_user)
     
     sent_admin_msg = bot.send_message(FORWARD_CHAT_ID, admin_report, reply_markup=markup)
     admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
@@ -216,13 +190,17 @@ def _cleanup_old_reports(current_msg_id: int):
     for key in keys_to_delete:
         admin_reports_map.pop(key, None)
 
-# *** ОБРАБОТЧИК ПЕРЕСЫЛКИ ОТВЕТОВ АДМИНА (остался без изменений) ***
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio', 'location', 'contact'])
 def forward_reply_to_user(message):
+    """
+    Если администратор отвечает на сообщение-заявку, бот пересылает этот ответ пользователю.
+    """
     if message.chat.id != FORWARD_CHAT_ID:
         return
+
     if not message.reply_to_message:
         return
+
     replied_msg_id = message.reply_to_message.message_id
     if replied_msg_id not in admin_reports_map:
         return
@@ -233,71 +211,37 @@ def forward_reply_to_user(message):
         if message.content_type == 'text':
             bot.send_message(target_chat_id, f"✉️ Ответ от администрации:\n\n{message.text}")
         elif message.content_type == 'photo':
-            file_id = message.photo[-1].file_id; caption = message.caption if message.caption else ""
+            file_id = message.photo[-1].file_id
+            caption = message.caption if message.caption else ""
             bot.send_photo(target_chat_id, file_id, caption=caption)
         elif message.content_type == 'video':
-            file_id = message.video.file_id; caption = message.caption if message.caption else ""
+            file_id = message.video.file_id
+            caption = message.caption if message.caption else ""
             bot.send_video(target_chat_id, file_id, caption=caption)
         elif message.content_type == 'document':
-            file_id = message.document.file_id; caption = message.caption if message.caption else ""
+            file_id = message.document.file_id
+            caption = message.caption if message.caption else ""
             bot.send_document(target_chat_id, file_id, caption=caption)
         elif message.content_type == 'voice':
-            file_id = message.voice.file_id; bot.send_voice(target_chat_id, file_id)
+            file_id = message.voice.file_id
+            bot.send_voice(target_chat_id, file_id)
         elif message.content_type == 'sticker':
-            file_id = message.sticker.file_id; bot.send_sticker(target_chat_id, file_id)
+            file_id = message.sticker.file_id
+            bot.send_sticker(target_chat_id, file_id)
         elif message.content_type == 'audio':
-            file_id = message.audio.file_id; caption = message.caption if message.caption else ""
+            file_id = message.audio.file_id
+            caption = message.caption if message.caption else ""
             bot.send_audio(target_chat_id, file_id, caption=caption)
         elif message.content_type == 'location':
-            lat = message.location.latitude; lon = message.location.longitude
+            lat = message.location.latitude
+            lon = message.location.longitude
             bot.send_location(target_chat_id, lat, lon)
         elif message.content_type == 'contact':
-            phone = message.contact.phone_number; name = message.contact.first_name
+            phone = message.contact.phone_number
+            name = message.contact.first_name
             bot.send_contact(target_chat_id, phone, name)
     except Exception as e:
         print(f"Ошибка при пересылке ответа пользователю {target_chat_id}: {e}")
-
-# *** ГЛАВНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ОТ ПОЛЬЗОВАТЕЛЕЙ ***
-@bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio'])
-def main_router(message):
-    chat_id = message.chat.id
-
-    # 1. Если юзер в режиме заполнения АНКЕТЫ — работаем через register_next_step_handler
-    if chat_id in user_data and user_data[chat_id].get('name') is None and message.text not in ["✍️ Начать подачу заявки", "💬 Написать в чат клана (без анкеты)", "⛔ Завершить общение"]:
-        # Это костыль, чтобы поймать первый шаг вне хендлера /start, если человек нажал кнопки меню
-        if message.text == "✍️ Начать подачу заявки":
-            get_name(message)
-        return
-
-    # 2. Если юзер включил режим пересылки В ГРУППУ
-    if chat_id in forwarding_users:
-        try:
-            bot.forward_message(FORWARD_CHAT_ID, chat_id, message.message_id)
-        except Exception as e:
-            bot.send_message(chat_id, f"❌ Не удалось отправить в группу: {e}")
-        return
-
-    # 3. Обработка кнопок главного меню
-    if message.text == "✍️ Начать подачу заявки":
-        # Удаляем данные на случай повторного старта
-        if chat_id in user_data:
-            del user_data[chat_id]
-            
-        telegram_username = f'@{message.from_user.username}' if message.from_user.username else '@не_указан'
-        user_data[chat_id] = {
-            'name': None, 'age': None, 'donate': None, 'experience': None, 'discord': None,
-            'microphone': None, 'hours_per_day': None, 'pve_rating': None, 'pvp_rating': None,
-            'telegram_username': telegram_username
-        }
-        get_name(message)
-        return
-
-    # Если текст не распознан ни как анкета, ни как команда чата
-    if message.content_type == 'text':
-        help_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
-        help_markup.add(types.KeyboardButton("✍️ Начать подачу заявки"), types.KeyboardButton("💬 Написать в чат клана (без анкеты)"))
-        bot.send_message(chat_id, "Я вас не понял. Выберите действие в меню:", reply_markup=help_markup)
-
 
 if __name__ == '__main__':
     print("Бот запущен...")
