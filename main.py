@@ -71,7 +71,7 @@ def get_donate(message):
     chat_id = message.chat.id
     user_data[chat_id]['donate'] = message.text.strip().capitalize()
     
-    bot.send_message(chat_id, 'В каком дискорде ты находишься?')
+    bot.send_message(chat_id, 'Вашь дискорд?')
     bot.register_next_step_handler(message, get_discord)
 
 def get_discord(message):
