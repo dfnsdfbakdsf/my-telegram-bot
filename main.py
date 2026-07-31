@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА НОВЫЙ ТОКЕН!
+BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 FORWARD_CHAT_ID = -1004291446609                     # ID вашей группы/админа
 # -----------------
 
@@ -177,10 +177,21 @@ def get_experience(message):
     # Сохраняем связь: ID сообщения в группе -> данные пользователя
     admin_reports_map[sent_admin_msg.message_id] = {'user_chat_id': chat_id}
     
+    # Очищаем временную память пользователя после сохранения ссылки на сообщение
     del user_data[chat_id]
 
-# *** ДОБАВЛЕННЫЙ ОБРАБОТЧИК ***
-@bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker'])
+    # Опциональная очистка старого мусора в базе заявок (старше 1000 сообщений назад)
+    _cleanup_old_reports(sent_admin_msg.message_id)
+
+def _cleanup_old_reports(current_msg_id: int):
+    """Удаляет старые записи из словаря admin_reports_map для экономии памяти."""
+    threshold = current_msg_id - 1000
+    keys_to_delete = [key for key in list(admin_reports_map.keys()) if key < threshold]
+    for key in keys_to_delete:
+        admin_reports_map.pop(key, None)
+
+# *** ОБРАБОТЧИК ПЕРЕСЫЛКИ ОТВЕТОВ АДМИНА ***
+@bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio', 'location', 'contact'])
 def forward_reply_to_user(message):
     """
     Если администратор отвечает на сообщение-заявку, бот пересылает этот ответ пользователю.
@@ -201,28 +212,56 @@ def forward_reply_to_user(message):
     # Получаем ID пользователя, который оставлял заявку
     target_chat_id = admin_reports_map[replied_msg_id]['user_chat_id']
 
-    # Пересылаем текст ответа
-    if message.content_type == 'text':
-        bot.send_message(target_chat_id, f"Ответ от администрации:\n\n{message.text}")
-    # Пересылаем медиафайлы
-    elif message.content_type == 'photo':
-        file_id = message.photo[-1].file_id
-        caption = message.caption if message.caption else ""
-        bot.send_photo(target_chat_id, file_id, caption=caption)
-    elif message.content_type == 'video':
-        file_id = message.video.file_id
-        caption = message.caption if message.caption else ""
-        bot.send_video(target_chat_id, file_id, caption=caption)
-    elif message.content_type == 'document':
-        file_id = message.document.file_id
-        caption = message.caption if message.caption else ""
-        bot.send_document(target_chat_id, file_id, caption=caption)
-    elif message.content_type == 'voice':
-        file_id = message.voice.file_id
-        bot.send_voice(target_chat_id, file_id)
-    elif message.content_type == 'sticker':
-        file_id = message.sticker.file_id
-        bot.send_sticker(target_chat_id, file_id)
+    try:
+        # Пересылаем текст ответа
+        if message.content_type == 'text':
+            bot.send_message(target_chat_id, f"✉️ Ответ от администрации:\n\n{message.text}")
+
+        # Пересылаем медиафайлы
+        elif message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            caption = message.caption if message.caption else ""
+            bot.send_photo(target_chat_id, file_id, caption=caption)
+
+        elif message.content_type == 'video':
+            file_id = message.video.file_id
+            caption = message.caption if message.caption else ""
+            bot.send_video(target_chat_id, file_id, caption=caption)
+
+        elif message.content_type == 'document':
+            file_id = message.document.file_id
+            caption = message.caption if message.caption else ""
+            bot.send_document(target_chat_id, file_id, caption=caption)
+
+        elif message.content_type == 'voice':
+            file_id = message.voice.file_id
+            bot.send_voice(target_chat_id, file_id)
+
+        elif message.content_type == 'sticker':
+            file_id = message.sticker.file_id
+            bot.send_sticker(target_chat_id, file_id)
+            
+        elif message.content_type == 'audio':
+            file_id = message.audio.file_id
+            caption = message.caption if message.caption else ""
+            bot.send_audio(target_chat_id, file_id, caption=caption)
+            
+        elif message.content_type == 'location':
+            lat = message.location.latitude
+            lon = message.location.longitude
+            bot.send_location(target_chat_id, lat, lon)
+            
+        elif message.content_type == 'contact':
+            phone = message.contact.phone_number
+            name = message.contact.first_name
+            bot.send_contact(target_chat_id, phone, name)
+
+    except Exception as e:
+        print(f"Ошибка при пересылке ответа пользователю {target_chat_id}: {e}")
+        try:
+            bot.send_message(target_chat_id, "Администрация пыталась отправить вам файл, но произошла ошибка. Попробуйте позже.")
+        except:
+            pass
 
 if __name__ == '__main__':
     print("Бот запущен...")
