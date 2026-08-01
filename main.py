@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
-ADMIN_IDS = [6805635660]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
+ADMIN_IDS = [6805635660,7334259357]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
