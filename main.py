@@ -18,6 +18,11 @@ forwarding_users = {}  # Словарь для режима пересылки �
 def handle_start(message):
     """Сразу начинаем анкету с вопроса про имя."""
     chat_id = message.chat.id
+    
+    # Игнорируем команду /start в группе администрации
+    if chat_id == GROUP_CHAT_ID:
+        bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
+        return
 
     # Проверяем, не заполняет ли уже пользователь анкету
     if chat_id in user_data or chat_id in forwarding_users:
@@ -189,6 +194,11 @@ def _cleanup_old_reports(current_msg_id: int):
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio', 'location', 'contact'])
 def main_router(message):
     chat_id = message.chat.id
+    
+    # Игнорируем команду /start в группе администрации
+    if chat_id == GROUP_CHAT_ID and message.content_type == 'text' and message.text == '/start':
+        bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
+        return
 
     # 1. Если сообщение пришло ОТ АДМИНА внутри ГРУППЫ
     if message.chat.id == GROUP_CHAT_ID and message.from_user.id in ADMIN_IDS:
