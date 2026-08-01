@@ -1,11 +1,16 @@
 import telebot
 from telebot import types
 import time
+import logging
+
+# Включаем логирование для отладки
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
-ADMIN_IDS = [6805635660]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
+ADMIN_IDS = [123456789, 987654321]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -169,11 +174,15 @@ def get_experience(message):
     bot.send_message(chat_id, final_text_user)
     
     sent_admin_msg = bot.send_message(GROUP_CHAT_ID, admin_report, reply_markup=markup)
+    
+    # Сохраняем информацию о заявке
     admin_reports_map[sent_admin_msg.message_id] = {
         'user_chat_id': chat_id,
         'user_name': user_data[chat_id]['name'],
         'timestamp': time.time()
     }
+    
+    logger.info(f"✅ Заявка сохранена! ID сообщения: {sent_admin_msg.message_id}, Пользователь: {chat_id}")
     
     # Включаем режим свободной отправки сообщений от кандидата в группу
     forwarding_users[chat_id] = True
@@ -195,76 +204,106 @@ def _cleanup_old_reports(current_msg_id: int):
 def main_router(message):
     chat_id = message.chat.id
     
+    # Логируем входящее сообщение
+    logger.info(f"📨 Сообщение от {message.from_user.id} в чат {chat_id}")
+    logger.info(f"📝 Текст: {message.text if message.text else 'Медиа'}")
+    logger.info(f"🔍 Reply_to: {message.reply_to_message.message_id if message.reply_to_message else 'Нет'}")
+    
     # *** ПЕРВАЯ ПРОВЕРКА: Сообщения в группе администрации ***
     if message.chat.id == GROUP_CHAT_ID:
+        logger.info("📌 Сообщение в группе администрации")
+        
         # 1. Если это команда /start в группе - игнорируем
         if message.content_type == 'text' and message.text == '/start':
             bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
             return
         
-        # 2. Если сообщение от админа - обрабатываем только ответы на заявки
+        # 2. Если сообщение от админа
         if message.from_user.id in ADMIN_IDS:
+            logger.info(f"👤 Сообщение от админа {message.from_user.id}")
+            
             # Проверяем, является ли это ответом на заявку
-            if message.reply_to_message and message.reply_to_message.message_id in admin_reports_map:
-                target_data = admin_reports_map[message.reply_to_message.message_id]
-                target_user_id = target_data['user_chat_id']
-                user_name = target_data.get('user_name', 'Пользователь')
+            if message.reply_to_message:
+                replied_msg_id = message.reply_to_message.message_id
+                logger.info(f"🔄 Ответ на сообщение ID: {replied_msg_id}")
+                logger.info(f"📋 Admin_reports_map: {admin_reports_map}")
                 
-                # Отправляем сообщение пользователю
-                try:
-                    if message.content_type == 'text':
-                        bot.send_message(
-                            target_user_id, 
-                            f"✉️ Ответ от администрации:\n\n{message.text}"
+                if replied_msg_id in admin_reports_map:
+                    target_data = admin_reports_map[replied_msg_id]
+                    target_user_id = target_data['user_chat_id']
+                    user_name = target_data.get('user_name', 'Пользователь')
+                    
+                    logger.info(f"✅ Найден пользователь для ответа: {target_user_id} ({user_name})")
+                    
+                    # Отправляем сообщение пользователю
+                    try:
+                        if message.content_type == 'text':
+                            bot.send_message(
+                                target_user_id, 
+                                f"✉️ Ответ от администрации:\n\n{message.text}"
+                            )
+                            logger.info(f"✅ Текстовое сообщение отправлено пользователю {target_user_id}")
+                        elif message.content_type == 'photo':
+                            file_id = message.photo[-1].file_id
+                            caption = message.caption if message.caption else "✉️ Ответ от администрации с фото:"
+                            bot.send_photo(target_user_id, file_id, caption=caption)
+                            logger.info(f"✅ Фото отправлено пользователю {target_user_id}")
+                        elif message.content_type == 'video':
+                            file_id = message.video.file_id
+                            caption = message.caption if message.caption else "✉️ Ответ от администрации с видео:"
+                            bot.send_video(target_user_id, file_id, caption=caption)
+                            logger.info(f"✅ Видео отправлено пользователю {target_user_id}")
+                        elif message.content_type == 'document':
+                            file_id = message.document.file_id
+                            caption = message.caption if message.caption else "✉️ Ответ от администрации с документом:"
+                            bot.send_document(target_user_id, file_id, caption=caption)
+                            logger.info(f"✅ Документ отправлен пользователю {target_user_id}")
+                        elif message.content_type == 'voice':
+                            file_id = message.voice.file_id
+                            bot.send_voice(target_user_id, file_id)
+                            logger.info(f"✅ Голосовое отправлено пользователю {target_user_id}")
+                        elif message.content_type == 'sticker':
+                            file_id = message.sticker.file_id
+                            bot.send_sticker(target_user_id, file_id)
+                            logger.info(f"✅ Стикер отправлен пользователю {target_user_id}")
+                        elif message.content_type == 'audio':
+                            file_id = message.audio.file_id
+                            caption = message.caption if message.caption else "✉️ Ответ от администрации с аудио:"
+                            bot.send_audio(target_user_id, file_id, caption=caption)
+                            logger.info(f"✅ Аудио отправлено пользователю {target_user_id}")
+                        else:
+                            bot.send_message(target_user_id, f"✉️ Ответ от администрации (медиафайл):")
+                            bot.forward_message(target_user_id, GROUP_CHAT_ID, message.message_id)
+                            logger.info(f"✅ Медиа переслано пользователю {target_user_id}")
+                        
+                        # Подтверждаем администратору, что сообщение отправлено
+                        bot.reply_to(
+                            message, 
+                            f"✅ Сообщение отправлено пользователю {user_name}!"
                         )
-                    elif message.content_type == 'photo':
-                        file_id = message.photo[-1].file_id
-                        caption = message.caption if message.caption else "✉️ Ответ от администрации с фото:"
-                        bot.send_photo(target_user_id, file_id, caption=caption)
-                    elif message.content_type == 'video':
-                        file_id = message.video.file_id
-                        caption = message.caption if message.caption else "✉️ Ответ от администрации с видео:"
-                        bot.send_video(target_user_id, file_id, caption=caption)
-                    elif message.content_type == 'document':
-                        file_id = message.document.file_id
-                        caption = message.caption if message.caption else "✉️ Ответ от администрации с документом:"
-                        bot.send_document(target_user_id, file_id, caption=caption)
-                    elif message.content_type == 'voice':
-                        file_id = message.voice.file_id
-                        bot.send_voice(target_user_id, file_id)
-                    elif message.content_type == 'sticker':
-                        file_id = message.sticker.file_id
-                        bot.send_sticker(target_user_id, file_id)
-                    elif message.content_type == 'audio':
-                        file_id = message.audio.file_id
-                        caption = message.caption if message.caption else "✉️ Ответ от администрации с аудио:"
-                        bot.send_audio(target_user_id, file_id, caption=caption)
-                    else:
-                        bot.send_message(target_user_id, f"✉️ Ответ от администрации (медиафайл):")
-                        bot.forward_message(target_user_id, GROUP_CHAT_ID, message.message_id)
-                    
-                    # Подтверждаем администратору, что сообщение отправлено
-                    bot.reply_to(
-                        message, 
-                        f"✅ Сообщение отправлено пользователю {user_name}!"
-                    )
-                    
-                except Exception as e:
-                    bot.reply_to(
-                        message, 
-                        f"❌ Ошибка отправки пользователю: {str(e)}"
-                    )
+                        logger.info(f"✅ Подтверждение отправлено админу")
+                        
+                    except Exception as e:
+                        error_msg = f"❌ Ошибка отправки пользователю: {str(e)}"
+                        logger.error(error_msg)
+                        bot.reply_to(message, error_msg)
+                else:
+                    logger.warning(f"⚠️ ID сообщения {replied_msg_id} не найден в admin_reports_map")
+            else:
+                logger.info("ℹ️ Сообщение от админа без reply, игнорируем")
             
             # ВСЕ сообщения от админов в группе игнорируем (не пересылаем и не отвечаем)
             return
         
         # 3. Если сообщение в группе от НЕ админа - игнорируем
-        # (обычные пользователи не должны писать в группу админов)
+        logger.info("🚫 Сообщение от не-админа в группе, игнорируем")
         return
 
     # *** ВТОРАЯ ПРОВЕРКА: Личные сообщения боту ***
     # Если пользователь в режиме пересылки сообщений
     if chat_id in forwarding_users:
+        logger.info(f"📤 Пересылка сообщения от {chat_id}")
+        
         # Проверяем, не является ли пользователь администратором
         if chat_id in ADMIN_IDS:
             # Если админ случайно в списке пересылки - удаляем его
@@ -282,12 +321,16 @@ def main_router(message):
                 f"💬 Сообщение от кандидата (ID: {chat_id})",
                 reply_to_message_id=forwarded.message_id
             )
+            logger.info(f"✅ Сообщение переслано в группу")
         except Exception as e:
-            bot.send_message(chat_id, f"❌ Ошибка отправки: {e}")
+            error_msg = f"❌ Ошибка отправки: {e}"
+            logger.error(error_msg)
+            bot.send_message(chat_id, error_msg)
         return
 
     # Если пользователь в процессе заполнения анкеты
     if chat_id in user_data:
+        logger.info(f"📝 Пользователь {chat_id} в процессе анкеты")
         # Обработка анкеты уже идет через register_next_step_handler
         return
 
@@ -335,8 +378,26 @@ def clear_applications(message):
     bot.send_message(GROUP_CHAT_ID, "🗑️ Все заявки очищены!")
 
 
+# Команда для проверки статуса (только для админов)
+@bot.message_handler(commands=['status'])
+def status_command(message):
+    """Проверить статус бота"""
+    if message.chat.id != GROUP_CHAT_ID or message.from_user.id not in ADMIN_IDS:
+        return
+    
+    status_text = (
+        "📊 **Статус бота**\n\n"
+        f"👥 Активных заявок: {len(admin_reports_map)}\n"
+        f"📨 Пользователей в режиме пересылки: {len(forwarding_users)}\n"
+        f"📝 Пользователей в процессе анкеты: {len(user_data)}\n\n"
+        f"📋 Admin_reports_map: {admin_reports_map}"
+    )
+    bot.send_message(GROUP_CHAT_ID, status_text)
+
+
 if __name__ == '__main__':
     print("🤖 Бот запущен...")
     print(f"📋 Группа админов: {GROUP_CHAT_ID}")
     print(f"👥 Администраторы: {ADMIN_IDS}")
+    print("📝 Логирование включено. Смотрите консоль для отладки.")
     bot.infinity_polling()
