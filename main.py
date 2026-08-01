@@ -195,69 +195,85 @@ def _cleanup_old_reports(current_msg_id: int):
 def main_router(message):
     chat_id = message.chat.id
     
-    # Игнорируем команду /start в группе администрации
-    if chat_id == GROUP_CHAT_ID and message.content_type == 'text' and message.text == '/start':
-        bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
-        return
-    
-    # Игнорируем любые сообщения от администраторов в группе (они не должны пересылаться)
-    if message.chat.id == GROUP_CHAT_ID and message.from_user.id in ADMIN_IDS:
-        # Обрабатываем только ответы на заявки
-        if message.reply_to_message and message.reply_to_message.message_id in admin_reports_map:
-            target_data = admin_reports_map[message.reply_to_message.message_id]
-            target_user_id = target_data['user_chat_id']
-            user_name = target_data.get('user_name', 'Пользователь')
-            
-            # Отправляем сообщение пользователю
-            try:
-                if message.content_type == 'text':
-                    bot.send_message(
-                        target_user_id, 
-                        f"✉️ Ответ от администрации:\n\n{message.text}"
+    # *** ПЕРВАЯ ПРОВЕРКА: Сообщения в группе администрации ***
+    if message.chat.id == GROUP_CHAT_ID:
+        # 1. Если это команда /start в группе - игнорируем
+        if message.content_type == 'text' and message.text == '/start':
+            bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
+            return
+        
+        # 2. Если сообщение от админа - обрабатываем только ответы на заявки
+        if message.from_user.id in ADMIN_IDS:
+            # Проверяем, является ли это ответом на заявку
+            if message.reply_to_message and message.reply_to_message.message_id in admin_reports_map:
+                target_data = admin_reports_map[message.reply_to_message.message_id]
+                target_user_id = target_data['user_chat_id']
+                user_name = target_data.get('user_name', 'Пользователь')
+                
+                # Отправляем сообщение пользователю
+                try:
+                    if message.content_type == 'text':
+                        bot.send_message(
+                            target_user_id, 
+                            f"✉️ Ответ от администрации:\n\n{message.text}"
+                        )
+                    elif message.content_type == 'photo':
+                        file_id = message.photo[-1].file_id
+                        caption = message.caption if message.caption else "✉️ Ответ от администрации с фото:"
+                        bot.send_photo(target_user_id, file_id, caption=caption)
+                    elif message.content_type == 'video':
+                        file_id = message.video.file_id
+                        caption = message.caption if message.caption else "✉️ Ответ от администрации с видео:"
+                        bot.send_video(target_user_id, file_id, caption=caption)
+                    elif message.content_type == 'document':
+                        file_id = message.document.file_id
+                        caption = message.caption if message.caption else "✉️ Ответ от администрации с документом:"
+                        bot.send_document(target_user_id, file_id, caption=caption)
+                    elif message.content_type == 'voice':
+                        file_id = message.voice.file_id
+                        bot.send_voice(target_user_id, file_id)
+                    elif message.content_type == 'sticker':
+                        file_id = message.sticker.file_id
+                        bot.send_sticker(target_user_id, file_id)
+                    elif message.content_type == 'audio':
+                        file_id = message.audio.file_id
+                        caption = message.caption if message.caption else "✉️ Ответ от администрации с аудио:"
+                        bot.send_audio(target_user_id, file_id, caption=caption)
+                    else:
+                        bot.send_message(target_user_id, f"✉️ Ответ от администрации (медиафайл):")
+                        bot.forward_message(target_user_id, GROUP_CHAT_ID, message.message_id)
+                    
+                    # Подтверждаем администратору, что сообщение отправлено
+                    bot.reply_to(
+                        message, 
+                        f"✅ Сообщение отправлено пользователю {user_name}!"
                     )
-                elif message.content_type == 'photo':
-                    file_id = message.photo[-1].file_id
-                    caption = message.caption if message.caption else "✉️ Ответ от администрации с фото:"
-                    bot.send_photo(target_user_id, file_id, caption=caption)
-                elif message.content_type == 'video':
-                    file_id = message.video.file_id
-                    caption = message.caption if message.caption else "✉️ Ответ от администрации с видео:"
-                    bot.send_video(target_user_id, file_id, caption=caption)
-                elif message.content_type == 'document':
-                    file_id = message.document.file_id
-                    caption = message.caption if message.caption else "✉️ Ответ от администрации с документом:"
-                    bot.send_document(target_user_id, file_id, caption=caption)
-                elif message.content_type == 'voice':
-                    file_id = message.voice.file_id
-                    bot.send_voice(target_user_id, file_id)
-                elif message.content_type == 'sticker':
-                    file_id = message.sticker.file_id
-                    bot.send_sticker(target_user_id, file_id)
-                elif message.content_type == 'audio':
-                    file_id = message.audio.file_id
-                    caption = message.caption if message.caption else "✉️ Ответ от администрации с аудио:"
-                    bot.send_audio(target_user_id, file_id, caption=caption)
-                else:
-                    bot.send_message(target_user_id, f"✉️ Ответ от администрации (медиафайл):")
-                    bot.forward_message(target_user_id, GROUP_CHAT_ID, message.message_id)
-                
-                # Подтверждаем администратору, что сообщение отправлено
-                bot.reply_to(
-                    message, 
-                    f"✅ Сообщение отправлено пользователю {user_name}!"
-                )
-                
-            except Exception as e:
-                bot.reply_to(
-                    message, 
-                    f"❌ Ошибка отправки пользователю: {str(e)}"
-                )
-        return  # Важно: после обработки сообщения админа выходим, чтобы не пересылать его
+                    
+                except Exception as e:
+                    bot.reply_to(
+                        message, 
+                        f"❌ Ошибка отправки пользователю: {str(e)}"
+                    )
+            
+            # ВСЕ сообщения от админов в группе игнорируем (не пересылаем и не отвечаем)
+            return
+        
+        # 3. Если сообщение в группе от НЕ админа - игнорируем
+        # (обычные пользователи не должны писать в группу админов)
+        return
 
-    # 1. Если сообщение пришло ОТ КАНДИДАТА (личным сообщением боту)
+    # *** ВТОРАЯ ПРОВЕРКА: Личные сообщения боту ***
+    # Если пользователь в режиме пересылки сообщений
     if chat_id in forwarding_users:
+        # Проверяем, не является ли пользователь администратором
+        if chat_id in ADMIN_IDS:
+            # Если админ случайно в списке пересылки - удаляем его
+            del forwarding_users[chat_id]
+            bot.send_message(chat_id, "Вы администратор, режим пересылки отключен.")
+            return
+            
         try:
-            # Пересылаем его в группу как есть
+            # Пересылаем сообщение в группу
             forwarded = bot.forward_message(GROUP_CHAT_ID, chat_id, message.message_id)
             
             # Добавляем пометку, кто отправил
@@ -270,12 +286,18 @@ def main_router(message):
             bot.send_message(chat_id, f"❌ Ошибка отправки: {e}")
         return
 
-    # 2. Если это /start от человека, который еще не в режиме заявки
+    # Если пользователь в процессе заполнения анкеты
+    if chat_id in user_data:
+        # Обработка анкеты уже идет через register_next_step_handler
+        return
+
+    # *** ТРЕТЬЯ ПРОВЕРКА: Обычные сообщения ***
+    # Если это команда /start
     if message.content_type == 'text' and message.text == '/start':
         handle_start(message)
         return
 
-    # 3. Если человек написал что-то рандомное боту вне анкеты (только в ЛС)
+    # Если это сообщение в личку
     if isinstance(message.chat, types.Chat) and message.chat.type == 'private':
         bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
 
