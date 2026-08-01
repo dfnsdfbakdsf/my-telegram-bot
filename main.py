@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = '8935278169:AAFfVupDDFrp2rHufzQYJrsnWJxtI54Xxvw' # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
 GROUP_CHAT_ID = -1004291446609                     # ID вашей группы/админа
-ADMIN_IDS = [123456789, 987654321]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
+ADMIN_IDS = [6805635660]                 # *** ДОБАВЬТЕ СЮДА СВОИ TELEGRAM ID ***
 # -----------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -179,6 +179,7 @@ def get_experience(message):
     admin_reports_map[sent_admin_msg.message_id] = {
         'user_chat_id': chat_id,
         'user_name': user_data[chat_id]['name'],
+        'user_username': user_data[chat_id]['telegram_username'],
         'timestamp': time.time()
     }
     
@@ -199,15 +200,120 @@ def _cleanup_old_reports(current_msg_id: int):
         admin_reports_map.pop(key, None)
 
 
-# *** ГЛАВНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ОТ ПОЛЬЗОВАТЕЛЕЙ И АДМИНОВ ***
+# *** КОМАНДЫ ДЛЯ АДМИНИСТРАТОРОВ (работают в ЛС и в группе) ***
+@bot.message_handler(commands=['applications'])
+def list_applications(message):
+    """Показать активные заявки"""
+    # Проверяем, что пользователь - администратор
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ У вас нет прав для этой команды!")
+        return
+    
+    if not admin_reports_map:
+        bot.reply_to(message, "📭 Нет активных заявок.")
+        return
+    
+    text = "📋 **Активные заявки:**\n\n"
+    for msg_id, data in admin_reports_map.items():
+        user_name = data.get('user_name', 'Неизвестно')
+        user_username = data.get('user_username', '@не_указан')
+        timestamp = data.get('timestamp', 0)
+        time_ago = int((time.time() - timestamp) / 60) if timestamp else 0
+        
+        text += f"👤 {user_name} {user_username}\n"
+        text += f"🆔 ID пользователя: {data['user_chat_id']}\n"
+        text += f"📨 ID сообщения с заявкой: {msg_id}\n"
+        text += f"⏱️ {time_ago} мин. назад\n"
+        text += f"📌 Ответьте на сообщение #{msg_id} в группе\n\n"
+    
+    bot.reply_to(message, text)
+
+
+@bot.message_handler(commands=['status'])
+def status_command(message):
+    """Проверить статус бота"""
+    # Проверяем, что пользователь - администратор
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ У вас нет прав для этой команды!")
+        return
+    
+    status_text = (
+        "📊 **Статус бота**\n\n"
+        f"👥 Активных заявок: {len(admin_reports_map)}\n"
+        f"📨 Пользователей в режиме пересылки: {len(forwarding_users)}\n"
+        f"📝 Пользователей в процессе анкеты: {len(user_data)}\n\n"
+        f"📋 ID группы: {GROUP_CHAT_ID}\n"
+        f"👤 Ваш ID: {message.from_user.id}\n"
+    )
+    
+    # Добавляем список пользователей в режиме пересылки
+    if forwarding_users:
+        status_text += "\n👥 Пользователи в режиме пересылки:\n"
+        for user_id in forwarding_users:
+            status_text += f"  - {user_id}\n"
+    
+    bot.reply_to(message, status_text)
+
+
+@bot.message_handler(commands=['clear_applications'])
+def clear_applications(message):
+    """Очистить все заявки"""
+    # Проверяем, что пользователь - администратор
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ У вас нет прав для этой команды!")
+        return
+    
+    admin_reports_map.clear()
+    bot.reply_to(message, "🗑️ Все заявки очищены!")
+
+
+@bot.message_handler(commands=['myid'])
+def myid_command(message):
+    """Показать свой ID"""
+    bot.reply_to(message, f"🆔 Ваш ID: {message.from_user.id}")
+
+
+@bot.message_handler(commands=['help_admin'])
+def help_admin(message):
+    """Помощь для администраторов"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ У вас нет прав для этой команды!")
+        return
+    
+    help_text = (
+        "🤖 **Команды для администраторов:**\n\n"
+        "📋 `/applications` - Показать все активные заявки\n"
+        "📊 `/status` - Статус бота\n"
+        "🗑️ `/clear_applications` - Очистить все заявки\n"
+        "🆔 `/myid` - Показать свой ID\n"
+        "❓ `/help_admin` - Эта справка\n\n"
+        "📌 **Как ответить кандидату:**\n"
+        "1. Найдите сообщение с заявкой в группе\n"
+        "2. Нажмите 'Ответить' (Reply) на это сообщение\n"
+        "3. Напишите своё сообщение и отправьте\n"
+        "4. Бот перешлёт его кандидату в ЛС"
+    )
+    
+    bot.reply_to(message, help_text)
+
+
+# *** ГЛАВНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ***
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo', 'video', 'document', 'voice', 'sticker', 'audio', 'location', 'contact'])
 def main_router(message):
     chat_id = message.chat.id
     
+    # Игнорируем команды, которые уже обработаны другими хендлерами
+    if message.content_type == 'text' and message.text.startswith('/'):
+        # Проверяем, не является ли это командой для админов
+        known_commands = ['/applications', '/status', '/clear_applications', '/myid', '/help_admin']
+        if any(message.text.startswith(cmd) for cmd in known_commands):
+            return  # Команда уже обработана другим хендлером
+    
     # Логируем входящее сообщение
     logger.info(f"📨 Сообщение от {message.from_user.id} в чат {chat_id}")
     logger.info(f"📝 Текст: {message.text if message.text else 'Медиа'}")
-    logger.info(f"🔍 Reply_to: {message.reply_to_message.message_id if message.reply_to_message else 'Нет'}")
+    if message.reply_to_message:
+        logger.info(f"🔍 Reply_to: {message.reply_to_message.message_id}")
     
     # *** ПЕРВАЯ ПРОВЕРКА: Сообщения в группе администрации ***
     if message.chat.id == GROUP_CHAT_ID:
@@ -289,6 +395,7 @@ def main_router(message):
                         bot.reply_to(message, error_msg)
                 else:
                     logger.warning(f"⚠️ ID сообщения {replied_msg_id} не найден в admin_reports_map")
+                    bot.reply_to(message, "⚠️ Эта заявка уже неактивна или была удалена.")
             else:
                 logger.info("ℹ️ Сообщение от админа без reply, игнорируем")
             
@@ -345,59 +452,18 @@ def main_router(message):
         bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
 
 
-# Команда для просмотра активных заявок (только для админов)
-@bot.message_handler(commands=['applications'])
-def list_applications(message):
-    """Показать активные заявки"""
-    if message.chat.id != GROUP_CHAT_ID or message.from_user.id not in ADMIN_IDS:
-        return
-    
-    if not admin_reports_map:
-        bot.send_message(GROUP_CHAT_ID, "Нет активных заявок.")
-        return
-    
-    text = "📋 Активные заявки:\n\n"
-    for msg_id, data in admin_reports_map.items():
-        user_name = data.get('user_name', 'Неизвестно')
-        timestamp = data.get('timestamp', 0)
-        time_ago = int((time.time() - timestamp) / 60) if timestamp else 0
-        text += f"• {user_name} (ID: {data['user_chat_id']}) - {time_ago} мин. назад\n"
-        text += f"  Ответьте на сообщение с заявкой (ID: {msg_id})\n\n"
-    
-    bot.send_message(GROUP_CHAT_ID, text)
-
-
-# Команда для очистки старых заявок (только для админов)
-@bot.message_handler(commands=['clear_applications'])
-def clear_applications(message):
-    """Очистить все заявки"""
-    if message.chat.id != GROUP_CHAT_ID or message.from_user.id not in ADMIN_IDS:
-        return
-    
-    admin_reports_map.clear()
-    bot.send_message(GROUP_CHAT_ID, "🗑️ Все заявки очищены!")
-
-
-# Команда для проверки статуса (только для админов)
-@bot.message_handler(commands=['status'])
-def status_command(message):
-    """Проверить статус бота"""
-    if message.chat.id != GROUP_CHAT_ID or message.from_user.id not in ADMIN_IDS:
-        return
-    
-    status_text = (
-        "📊 **Статус бота**\n\n"
-        f"👥 Активных заявок: {len(admin_reports_map)}\n"
-        f"📨 Пользователей в режиме пересылки: {len(forwarding_users)}\n"
-        f"📝 Пользователей в процессе анкеты: {len(user_data)}\n\n"
-        f"📋 Admin_reports_map: {admin_reports_map}"
-    )
-    bot.send_message(GROUP_CHAT_ID, status_text)
-
-
 if __name__ == '__main__':
+    print("=" * 50)
     print("🤖 Бот запущен...")
     print(f"📋 Группа админов: {GROUP_CHAT_ID}")
     print(f"👥 Администраторы: {ADMIN_IDS}")
     print("📝 Логирование включено. Смотрите консоль для отладки.")
+    print("=" * 50)
+    print("\n📌 Команды для администраторов (работают в ЛС и в группе):")
+    print("  /applications - Показать активные заявки")
+    print("  /status - Статус бота")
+    print("  /clear_applications - Очистить заявки")
+    print("  /myid - Показать свой ID")
+    print("  /help_admin - Справка")
+    print("=" * 50)
     bot.infinity_polling()
