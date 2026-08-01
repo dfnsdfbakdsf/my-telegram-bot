@@ -199,11 +199,10 @@ def main_router(message):
     if chat_id == GROUP_CHAT_ID and message.content_type == 'text' and message.text == '/start':
         bot.reply_to(message, "❌ Эта команда не работает в группе. Напишите мне в личные сообщения!")
         return
-
-    # 1. Если сообщение пришло ОТ АДМИНА внутри ГРУППЫ
+    
+    # Игнорируем любые сообщения от администраторов в группе (они не должны пересылаться)
     if message.chat.id == GROUP_CHAT_ID and message.from_user.id in ADMIN_IDS:
-        
-        # А) Если админ отвечает на системное сообщение-заявку (из admin_reports_map)
+        # Обрабатываем только ответы на заявки
         if message.reply_to_message and message.reply_to_message.message_id in admin_reports_map:
             target_data = admin_reports_map[message.reply_to_message.message_id]
             target_user_id = target_data['user_chat_id']
@@ -253,30 +252,15 @@ def main_router(message):
                     message, 
                     f"❌ Ошибка отправки пользователю: {str(e)}"
                 )
-                
-        # Б) Если админ пишет обычное сообщение в группе (не ответ), оно НЕ уходит пользователям
-        # Но можно добавить возможность отправки через команду
-        if message.content_type == 'text' and message.text.startswith('/send'):
-            parts = message.text.split(maxsplit=1)
-            if len(parts) > 1:
-                try:
-                    # Поиск пользователя по имени или ID
-                    for msg_id, data in admin_reports_map.items():
-                        if data['user_name'].lower() in parts[1].lower():
-                            bot.send_message(data['user_chat_id'], f"✉️ Сообщение от администрации:\n\n{parts[1]}")
-                            bot.reply_to(message, f"✅ Сообщение отправлено!")
-                            break
-                except:
-                    pass
-        return
+        return  # Важно: после обработки сообщения админа выходим, чтобы не пересылать его
 
-    # 2. Если сообщение пришло ОТ КАНДИДАТА (личным сообщением боту)
+    # 1. Если сообщение пришло ОТ КАНДИДАТА (личным сообщением боту)
     if chat_id in forwarding_users:
         try:
             # Пересылаем его в группу как есть
             forwarded = bot.forward_message(GROUP_CHAT_ID, chat_id, message.message_id)
             
-            # Можно добавить пометку, кто отправил
+            # Добавляем пометку, кто отправил
             bot.send_message(
                 GROUP_CHAT_ID,
                 f"💬 Сообщение от кандидата (ID: {chat_id})",
@@ -286,13 +270,14 @@ def main_router(message):
             bot.send_message(chat_id, f"❌ Ошибка отправки: {e}")
         return
 
-    # 3. Если это /start от человека, который еще не в режиме заявки
+    # 2. Если это /start от человека, который еще не в режиме заявки
     if message.content_type == 'text' and message.text == '/start':
         handle_start(message)
         return
 
-    # 4. Если человек написал что-то рандомное боту вне анкеты
-    bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
+    # 3. Если человек написал что-то рандомное боту вне анкеты (только в ЛС)
+    if isinstance(message.chat, types.Chat) and message.chat.type == 'private':
+        bot.send_message(chat_id, "Чтобы подать заявку, напишите команду /start.")
 
 
 # Команда для просмотра активных заявок (только для админов)
