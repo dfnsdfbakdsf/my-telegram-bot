@@ -145,7 +145,7 @@ async def ask_questions(user: discord.User):
             else:
                 await user.send("❌ Ошибка: Я не могу найти указанный канал. Сообщите администратору.")
         except Exception as e:
-            await user.send("❌ Произошла ошибка при отправке анкеты.")
+            await user.send(".")
             print(f"Ошибка отправки в канал: {e}")
 
     except Exception as e:
