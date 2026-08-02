@@ -1,19 +1,20 @@
 import discord
 from discord.ext import commands
 import sys
+import os  # Добавлено для чтения переменных окружения
 
-# ВСТАВЬТЕ ТОКЕН СЮДА (Только ваш токен, без лишних кавычек)
-TOKEN = 'MTUzMzQzNzQ5MTMxMzM3NzM3MQ.Gd5KFV.iewTC6DncbfB9gD7tze7SnbB-ac6JjjCsIrYIQ'
+# 🛡️ Берем токен из переменных окружения (настройки хостинга)
+TOKEN = os.getenv('DISCORD_TOKEN')
 
-if TOKEN == 'ВАШ_ТОКЕН_БОТА_СЮДА':
-    print('❌ ОШИБКА: Вы не вставили токен!')
+if TOKEN is None:
+    print('❌ ОШИБКА: Не найден токен в переменных окружения!')
+    print('❗ Проверьте настройки вашего хостинга (добавьте переменную DISCORD_TOKEN)')
     sys.exit()
 
 print(f'🚀 ЗАПУСК БОТА...')
 
 intents = discord.Intents().all()
-
-# 👇 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Добавлено help_command=None
+# 👇 Исправлена ошибка CommandRegistrationError с командой help
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 @bot.event
@@ -101,6 +102,6 @@ if __name__ == "__main__":
     try:
         bot.run(TOKEN)
     except discord.LoginFailure:
-        print('❌ ОШИБКА: Неверный токен!')
+        print('❌ ОШИБКА: Неверный токен! Проверьте переменную DISCORD_TOKEN.')
     except Exception as e:
         print(f'❌ ОШИБКА: {e}')
