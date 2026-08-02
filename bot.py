@@ -4,7 +4,6 @@ from discord.ui import Modal, TextInput
 import os
 import sys
 import datetime
-import asyncio
 import re
 import json
 import time
@@ -60,7 +59,7 @@ def save_blacklist(blacklist_list):
 # Инициализация
 admin_ids = load_admins()
 stats = load_stats()
-blacklist = load_blacklist()
+blacklisted_users = load_blacklist() # Переименовали, чтобы не путаться с командой
 pending_applications = {}
 
 # ==========================================
@@ -79,7 +78,7 @@ class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     async def on_submit(self, interaction: discord.Interaction):
         user = interaction.user
 
-        if user.id in blacklist:
+        if user.id in blacklisted_users:
             await interaction.response.send_message("⛔ Вы в черном списке клана!", ephemeral=True)
             return
 
@@ -154,20 +153,20 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ (ИСПРАВЛЕНА ОШИБКА!)
+# 3. КОМАНДЫ
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен.')
+    print('✅ Бот запущен. Модальные окна активны!')
 
 @bot.command()
 async def start(ctx):
-    # 🛠️ ИСПРАВЛЕНИЕ: Проверяем черный список. Если ctx.author.id в blacklist
-    if ctx.author.id in blacklist:
+    # 🛡️ ПРОВЕРКА ЧЕРНОГО СПИСКА (Исправлена ошибка Type Error)
+    if ctx.author.id in blacklisted_users:
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
     
-    # Открываем анкету без кнопок, прямо через Interaction
+    # Открываем анкету
     await ctx.send("📝 Открываю анкету...", ephemeral=True)
     await ctx.interaction.response.send_modal(ApplicationModal())
 
@@ -192,11 +191,11 @@ async def blacklist(ctx, member: discord.Member):
     if ctx.author.id != 1459971163013910641:
         await ctx.send("⛔ Только владелец.", ephemeral=True)
         return
-    if member.id in blacklist:
+    if member.id in blacklisted_users:
         await ctx.send("⛔ Уже в ЧС.")
         return
-    blacklist.append(member.id)
-    save_blacklist(blacklist)
+    blacklisted_users.append(member.id)
+    save_blacklist(blacklisted_users)
     await ctx.send(f"✅ {member.mention} в ЧС.")
 
 @bot.command()
@@ -204,11 +203,11 @@ async def unblacklist(ctx, member: discord.Member):
     if ctx.author.id != 1459971163013910641:
         await ctx.send("⛔ Только владелец.", ephemeral=True)
         return
-    if member.id not in blacklist:
+    if member.id not in blacklisted_users:
         await ctx.send("✅ Не в ЧС.")
         return
-    blacklist.remove(member.id)
-    save_blacklist(blacklist)
+    blacklisted_users.remove(member.id)
+    save_blacklist(blacklisted_users)
     await ctx.send(f"✅ {member.mention} удален из ЧС.")
 
 @bot.command()
@@ -216,7 +215,7 @@ async def stats(ctx):
     embed = discord.Embed(title="📊 Статистика", color=discord.Color.purple())
     embed.add_field(name="📨 Анкет", value=str(stats["total_applications"]))
     embed.add_field(name="👑 Админов", value=str(len(admin_ids)))
-    embed.add_field(name="⛔ В ЧС", value=str(len(blacklist)))
+    embed.add_field(name="⛔ В ЧС", value=str(len(blacklisted_users)))
     await ctx.send(embed=embed)
 
 @bot.command()
