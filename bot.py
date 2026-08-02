@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.ui import Button, View
 import os
 import sys
 import datetime
@@ -62,14 +63,30 @@ blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. АНКЕТА В ЛС (ВМЕСТО МОДАЛЬНОГО ОКНА)
+# 1. КНОПКА ДЛЯ ОТКРЫТИЯ АНКЕТЫ (РАБОТАЕТ 100%)
+# ==========================================
+class StartButtonView(View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
+    async def start_survey(self, interaction: discord.Interaction, button: Button):
+        user = interaction.user
+        
+        # Проверка на ЧС
+        if user.id in blacklisted_users:
+            await interaction.response.send_message("⛔ Вы в черном списке клана!", ephemeral=True)
+            return
+        
+        # Открываем анкету в ЛС
+        await interaction.response.send_message("📨 Я отправил вам анкету в Личные Сообщения! Проверьте вкладку с ботом.", ephemeral=True)
+        await start_dm_application(user)
+
+# ==========================================
+# 2. ЛОГИКА АНКЕТЫ В ЛС
 # ==========================================
 async def start_dm_application(user: discord.User):
     try:
-        if user.id in blacklisted_users:
-            await user.send("⛔ Вы в черном списке клана!")
-            return
-
         questions = [
             {"key": "name", "q": "**Как вас зовут?** (Ваше реальное имя)"},
             {"key": "age", "q": "**Сколько вам лет?** (Введите число)"},
@@ -113,7 +130,7 @@ async def start_dm_application(user: discord.User):
                     break 
 
                 except asyncio.TimeoutError:
-                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa`.")
+                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa` или `!start`.")
                     return
 
         # Собираем анкету
@@ -151,7 +168,7 @@ async def start_dm_application(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 2. ОТВЕТЫ АДМИНА
+# 3. ОТВЕТЫ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -191,11 +208,11 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ БОТА
+# 4. КОМАНДЫ БОТА
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен! Теперь анкеты работают через ЛС.')
+    print('✅ Бот запущен! Кнопка работает.')
 
 @bot.command()
 async def start(ctx):
@@ -203,8 +220,13 @@ async def start(ctx):
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
     
-    await ctx.send("📨 Я открываю анкету в Личных Сообщениях. Проверьте вкладку с ботом!", ephemeral=True)
-    await start_dm_application(ctx.author)
+    embed = discord.Embed(
+        title="🎮 Добро пожаловать в клан!",
+        description="Мы рады видеть тебя здесь! Чтобы вступить в наш клан Minecraft, тебе нужно заполнить анкету.\n\nНажми на кнопку ниже, чтобы начать!",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Анкета займёт всего пару минут")
+    await ctx.send(embed=embed, view=StartButtonView())
 
 @bot.command()
 async def anketa(ctx):
@@ -257,7 +279,7 @@ async def stats(ctx):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
-    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (в ЛС)", inline=False)
+    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (с кнопкой)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
