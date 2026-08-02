@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import Button, View, Modal, TextInput
+from discord.ui import Modal, TextInput
 import os
 import sys
 import datetime
@@ -10,7 +10,7 @@ import time
 
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = 1533430617524539545  # ID канала с анкетами
+CHANNEL_ID = 1533430617524539545
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
@@ -62,7 +62,7 @@ blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО (Сама анкета)
+# 1. МОДАЛЬНОЕ ОКНО
 # ==========================================
 class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
@@ -112,26 +112,7 @@ class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
             print(f"Ошибка: {e}")
 
 # ==========================================
-# 2. КНОПКА (НОВАЯ, БЕЗ ОШИБКИ)
-# ==========================================
-class StartButtonView(View):
-    def __init__(self):
-        super().__init__(timeout=120)
-
-    @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
-    async def start_survey(self, interaction: discord.Interaction, button: Button):
-        # 🛡️ Сначала говорим Discord "жди", чтобы не вылетела ошибка времени
-        await interaction.response.defer(ephemeral=True)
-
-        if interaction.user.id in blacklisted_users:
-            await interaction.followup.send("⛔ Вы в черном списке клана!", ephemeral=True)
-            return
-
-        # Открываем анкету
-        await interaction.followup.send_modal(ApplicationModal())
-
-# ==========================================
-# 3. ОТВЕТЫ ОТ АДМИНОВ
+# 2. ОТВЕТЫ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -171,21 +152,29 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 4. КОМАНДЫ
+# 3. КОМАНДЫ (БЕЗ КНОПОК)
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен. Кнопка работает без ошибок!')
+    print('✅ Бот запущен. Кнопки отключены навсегда!')
 
 @bot.command()
 async def start(ctx):
+    # Сначала проверяем ЧС
+    if ctx.author.id in blacklisted_users:
+        await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
+        return
+
+    # Отправляем красивое приветствие, но НЕ кнопку.
     embed = discord.Embed(
         title="🎮 Добро пожаловать в клан!",
-        description="Мы рады видеть тебя здесь! Чтобы вступить в наш клан Minecraft, тебе нужно заполнить анкету.\n\nНажми на кнопку ниже, чтобы начать!",
+        description="Сейчас откроется анкета. Пожалуйста, заполните все поля.",
         color=discord.Color.blue()
     )
-    embed.set_footer(text="Анкета займёт всего пару минут")
-    await ctx.send(embed=embed, view=StartButtonView())
+    await ctx.send(embed=embed)
+    
+    # Мгновенно открываем модальное окно
+    await ctx.interaction.response.send_modal(ApplicationModal())
 
 @bot.command()
 async def anketa(ctx):
@@ -238,7 +227,7 @@ async def stats(ctx):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
-    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (с кнопкой)", inline=False)
+    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (мгновенно)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
