@@ -2,17 +2,19 @@ import discord
 from discord.ext import commands
 import sys
 
-# ВСТАВЬТЕ ТОКЕН
-TOKEN = 'MTUzMzQzNzQ5MTMxMzM3NzM3MQ.G0oVw5.CQK0W-6Kvdz75CfqH6dZEnQeHYBoWI4cD3UAns'
+# ВСТАВЬТЕ ТОКЕН СЮДА (Только ваш токен, без лишних кавычек)
+TOKEN = 'ВАШ_ТОКЕН_БОТА_СЮДА'
 
-if TOKEN == 'СЮДА_ВСТАВЬТЕ_ВАШ_ТОКЕН':
+if TOKEN == 'ВАШ_ТОКЕН_БОТА_СЮДА':
     print('❌ ОШИБКА: Вы не вставили токен!')
     sys.exit()
 
 print(f'🚀 ЗАПУСК БОТА...')
 
 intents = discord.Intents().all()
-bot = commands.Bot(command_prefix='!', intents=intents)
+
+# 👇 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Добавлено help_command=None
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():
