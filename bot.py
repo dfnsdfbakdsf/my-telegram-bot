@@ -61,13 +61,10 @@ def save_blacklist(blacklist_list):
 admin_ids = load_admins()
 stats = load_stats()
 blacklist = load_blacklist()
-
-# ВАЖНО: pending_applications теперь хранит ID анкеты, ID игрока И время создания (в секундах)
-# {"msg_id": [user_id, timestamp]}
 pending_applications = {}
 
 # ==========================================
-# 1. КНОПКА ДЛЯ СТАРТА АНКЕТЫ
+# 1. КНОПКА ДЛЯ СТАРТА АНКЕТЫ (ИСПРАВЛЕНА ОШИБКА ВРЕМЕНИ)
 # ==========================================
 class StartButtonView(View):
     def __init__(self):
@@ -75,14 +72,20 @@ class StartButtonView(View):
 
     @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
     async def start_survey(self, interaction: discord.Interaction, button: Button):
+        # 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: defer() говорит Discord'у "Подожди, я сейчас отвечу"
+        await interaction.response.defer(ephemeral=True)
+
         user_id = interaction.user.id
         
         # 🚫 ПРОВЕРКА НА ЧЕРНЫЙ СПИСОК
         if user_id in blacklist:
-            await interaction.response.send_message("⛔ **Вы в черном списке клана!** Вам запрещено подавать заявки.", ephemeral=True)
+            await interaction.followup.send("⛔ **Вы в черном списке клана!** Вам запрещено подавать заявки.", ephemeral=True)
             return
             
-        await interaction.response.send_message("📨 Я отправил вам анкету в ЛС! Проверьте вкладку с ботом.", ephemeral=True)
+        # Отправляем уведомление в чат
+        await interaction.followup.send("📨 Я отправил вам анкету в ЛС! Проверьте вкладку с ботом.", ephemeral=True)
+        
+        # Запускаем анкету
         await ask_questions(interaction.user)
 
 # ==========================================
@@ -158,8 +161,6 @@ async def ask_questions(user: discord.User):
             target_channel = bot.get_channel(CHANNEL_ID)
             if target_channel:
                 sent_message = await target_channel.send(embed=embed)
-                
-                # 💾 Сохраняем анкету: ID сообщения -> [ID юзера, ВРЕМЯ СОЗДАНИЯ]
                 pending_applications[sent_message.id] = [user.id, int(time.time())]
                 
                 stats["total_applications"] += 1
@@ -176,7 +177,7 @@ async def ask_questions(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА (С ПРОВЕРКОЙ НА 3 ДНЯ)
+# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -200,7 +201,6 @@ async def on_message(message):
     target_user_id = None
     target_msg_id = None
 
-    # 🔍 Ищем анкету в истории
     async for msg in message.channel.history(limit=20):
         if msg.author == bot.user and msg.embeds:
             if msg.id in pending_applications:
@@ -209,14 +209,12 @@ async def on_message(message):
                 break
 
     if target_user_id:
-        # ⏳ ПРОВЕРКА НА 3 ДНЯ
         creation_time = pending_applications[target_msg_id][1]
         current_time = int(time.time())
         
-        # 3 дня = 3 * 24 * 60 * 60 = 259200 секунд
         if current_time - creation_time > 259200:
-            await message.reply("⏰ **Анкета устарела (прошло более 3 дней).** Я удалил её из памяти и не буду отправлять ответы на неё.", mention_author=False)
-            del pending_applications[target_msg_id] # Удаляем старую анкету
+            await message.reply("⏰ **Анкета устарела (прошло более 3 дней).** Я удалил её из памяти.", mention_author=False)
+            del pending_applications[target_msg_id]
             return
 
         try:
@@ -225,7 +223,6 @@ async def on_message(message):
             await player_user.send(final_message)
             
             await message.reply(f"✅ Ответ успешно отправлен игроку {player_user.mention} в личные сообщения.", mention_author=False)
-            # Анкета НЕ удаляется из памяти, чтобы можно было отвечать несколько раз
             
         except Exception as e:
             await message.reply(f"❌ Не удалось отправить сообщение игроку. Ошибка: {e}")
@@ -233,7 +230,7 @@ async def on_message(message):
         await message.reply("⚠️ Я не нашёл анкету перед этим сообщением. Убедитесь, что вы ответили под анкетой.", mention_author=False)
 
 # ==========================================
-# 4. НОВЫЕ КОМАНДЫ (Пункт 4: !view и Пункт 5: !blacklist)
+# 4. КОМАНДЫ
 # ==========================================
 @bot.event
 async def on_ready():
@@ -242,33 +239,27 @@ async def on_ready():
     print(f'📬 Всего подано заявок: {stats["total_applications"]}')
     print('='*40)
 
-# 📝 Команда !view для просмотра анкеты по нику
 @bot.command()
 async def view(ctx, member: discord.Member):
-    # Ищем анкету этого участника в списке pending_applications
     found_application = False
     
     for msg_id, data in list(pending_applications.items()):
         user_id = data[0]
         if user_id == member.id:
-            # Нашли анкету! Теперь нужно получить сообщение по ID
             try:
                 target_channel = bot.get_channel(CHANNEL_ID)
                 msg = await target_channel.fetch_message(msg_id)
-                # Отправляем анкету заново
                 await ctx.send(f"📄 **Анкета игрока {member.mention}:**")
                 await ctx.send(embed=msg.embeds[0])
                 found_application = True
                 break
             except:
-                # Если сообщение удалено из чата, удаляем и из памяти
                 del pending_applications[msg_id]
                 continue
 
     if not found_application:
-        await ctx.send(f"❌ Не найдено активных анкет для игрока {member.mention} (или анкета устарела и удалена).")
+        await ctx.send(f"❌ Не найдено активных анкет для игрока {member.mention}.")
 
-# 🚫 Команда !blacklist
 @bot.command()
 async def blacklist(ctx, member: discord.Member):
     if member.id in blacklist:
@@ -277,9 +268,8 @@ async def blacklist(ctx, member: discord.Member):
     
     blacklist.append(member.id)
     save_blacklist(blacklist)
-    await ctx.send(f"✅ {member.mention} добавлен в черный список клана. Он не сможет подавать заявки.")
+    await ctx.send(f"✅ {member.mention} добавлен в черный список клана.")
 
-# ✅ Команда !unblacklist
 @bot.command()
 async def unblacklist(ctx, member: discord.Member):
     if member.id not in blacklist:
@@ -288,11 +278,8 @@ async def unblacklist(ctx, member: discord.Member):
     
     blacklist.remove(member.id)
     save_blacklist(blacklist)
-    await ctx.send(f"✅ {member.mention} удален из черного списка клана. Теперь он может подавать заявки.")
+    await ctx.send(f"✅ {member.mention} удален из черного списка.")
 
-# ==========================================
-# 5. ОСТАЛЬНЫЕ КОМАНДЫ
-# ==========================================
 @bot.command()
 async def start(ctx):
     embed = discord.Embed(
@@ -340,9 +327,8 @@ async def stats(ctx):
         color=discord.Color.purple()
     )
     embed.add_field(name="📨 Всего подано анкет", value=str(stats["total_applications"]), inline=False)
-    embed.add_field(name="👑 Администраторов (могут отвечать)", value=str(len(admin_ids)), inline=False)
+    embed.add_field(name="👑 Администраторов", value=str(len(admin_ids)), inline=False)
     embed.add_field(name="⛔ В черном списке", value=str(len(blacklist)), inline=False)
-    embed.set_footer(text="Статистика обновляется в реальном времени")
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -353,7 +339,7 @@ async def help(ctx):
     )
     embed.add_field(name="!start / !anketa", value="🎮 Начать анкету", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету игрока", inline=False)
-    embed.add_field(name="!blacklist @Ник", value="🚫 Забанить игрока (запретить анкеты)", inline=False)
+    embed.add_field(name="!blacklist @Ник", value="🚫 Забанить игрока", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Разбанить игрока", inline=False)
     embed.add_field(name="!stats", value="📊 Показать статистику", inline=False)
     embed.add_field(name="!addadmin @Ник", value="👑 Добавить админа", inline=False)
