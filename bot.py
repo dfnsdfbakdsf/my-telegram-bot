@@ -148,29 +148,24 @@ async def ask_questions(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА (ИСПРАВЛЕНА ОШИБКА)
+# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА (БЕЗ ПРОВЕРКИ ПРАВ)
 # ==========================================
 @bot.event
 async def on_message(message):
-    # 1. Всегда пропускаем сообщения самого бота
     if message.author == bot.user:
         return
 
-    # 2. ОБЯЗАТЕЛЬНО сначала обрабатываем команды (например !start, !anketa)
     await bot.process_commands(message)
 
-    # 3. Если сообщение НЕ в канале анкет, выходим
     if message.channel.id != CHANNEL_ID:
         return
 
-    # 4. САМОЕ ГЛАВНОЕ ИСПРАВЛЕНИЕ: если бота не упомянули (нет @), то игнорируем сообщение
+    # Если бота не упомянули - игнорируем
     if bot.user not in message.mentions:
         return
 
-    # Дальше код работает только если Админ написал @Бот
-    if message.author.id not in admin_ids:
-        await message.reply("⛔ **Доступ запрещен!** Только добавленные администраторы могут отвечать на анкеты через меня.", mention_author=False)
-        return
+    # ⚠️ ТУТ УБРАНА ПРОВЕРКА НА АДМИНОВ. ТЕПЕРЬ ОТВЕЧАТЬ МОЖЕТ ЛЮБОЙ
+    # if message.author.id not in admin_ids: ... (Этот блок удален)
 
     admin_reply_text = message.content
     clean_text = re.sub(rf'<@!?{bot.user.id}>', '', admin_reply_text).strip()
