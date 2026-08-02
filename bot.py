@@ -58,7 +58,7 @@ def save_blacklist(blacklist_list):
         json.dump(blacklist_list, f)
 
 admin_ids = load_admins()
-stats = load_stats()
+stats_data = load_stats() # 🛡️ ПЕРЕИМЕНОВАНО, ЧТОБЫ НЕ БЫЛО КОНФЛИКТА
 blacklisted_users = load_blacklist()
 pending_applications = {}
 pending_confirmations = {}
@@ -153,8 +153,8 @@ async def start_dm_application(user: discord.User):
             if target_channel:
                 sent_message = await target_channel.send(embed=embed)
                 pending_applications[sent_message.id] = [user.id, int(time.time())]
-                stats["total_applications"] += 1
-                save_stats(stats)
+                stats_data["total_applications"] += 1
+                save_stats(stats_data)
                 await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
             else:
                 await user.send("❌ Ошибка: канал не найден.")
@@ -225,7 +225,7 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 4. КОМАНДЫ БОТА (ИСПРАВЛЕНА ОШИБКА)
+# 4. КОМАНДЫ БОТА
 # ==========================================
 @bot.event
 async def on_ready():
@@ -291,7 +291,7 @@ async def stats(ctx):
         title="📊 Статистика набора в клан",
         color=discord.Color.purple()
     )
-    embed.add_field(name="📨 Всего подано анкет", value=str(stats["total_applications"]), inline=False)
+    embed.add_field(name="📨 Всего подано анкет", value=str(stats_data["total_applications"]), inline=False)
     embed.add_field(name="👑 Администраторов (могут отвечать)", value=str(len(admin_ids)), inline=False)
     embed.add_field(name="⛔ В черном списке", value=str(len(blacklisted_users)), inline=False)
     embed.set_footer(text="Статистика обновляется в реальном времени")
