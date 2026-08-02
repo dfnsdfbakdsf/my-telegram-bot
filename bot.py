@@ -47,7 +47,7 @@ def save_stats(stats_data):
 
 admin_ids = load_admins()
 stats = load_stats()
-pending_applications = {}
+pending_applications = {}  # 🗂️ Здесь хранятся анкеты бесконечно
 
 # ==========================================
 # 1. КНОПКА ДЛЯ СТАРТА АНКЕТЫ
@@ -128,31 +128,30 @@ async def ask_questions(user: discord.User):
         embed.add_field(name="👹 PvE (1-10)", value=answers["pve"], inline=True)
         embed.add_field(name="👥 Сколько играют на сервере", value=answers["server_population"], inline=False)
 
-        # 🛠️ ИСПРАВЛЕНИЕ ОШИБКИ: Сначала отправляем сообщение пользователю
         await user.send("⏳ Ваша анкета обрабатывается и отправляется руководству...")
         
         try:
             target_channel = bot.get_channel(CHANNEL_ID)
             if target_channel:
                 sent_message = await target_channel.send(embed=embed)
+                # 💾 Сохраняем анкету в память. Она останется там навсегда!
                 pending_applications[sent_message.id] = user.id
                 
                 stats["total_applications"] += 1
                 save_stats(stats)
                 
-                # Теперь отправляем финальное сообщение об успехе
                 await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
             else:
                 await user.send("❌ Ошибка: Я не могу найти указанный канал. Сообщите администратору.")
         except Exception as e:
-            await user.send(".")
+            await user.send("❌ Произошла ошибка при отправке анкеты.")
             print(f"Ошибка отправки в канал: {e}")
 
     except Exception as e:
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА
+# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА (БЕЗ ОГРАНИЧЕНИЙ)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -167,7 +166,6 @@ async def on_message(message):
     if bot.user not in message.mentions:
         return
 
-    # Если бота упомянули
     admin_reply_text = message.content
     clean_text = re.sub(rf'<@!?{bot.user.id}>', '', admin_reply_text).strip()
 
@@ -177,6 +175,7 @@ async def on_message(message):
     target_user_id = None
     target_msg_id = None
 
+    # 🔍 Ищем анкету в истории (независимо от того, отвечали на неё раньше или нет)
     async for msg in message.channel.history(limit=20):
         if msg.author == bot.user and msg.embeds:
             if msg.id in pending_applications:
@@ -191,7 +190,10 @@ async def on_message(message):
             await player_user.send(final_message)
             
             await message.reply(f"✅ Ответ успешно отправлен игроку {player_user.mention} в личные сообщения.", mention_author=False)
-            del pending_applications[target_msg_id]
+            
+            # 🚫 МЫ УБРАЛИ СТРОКУ 'del pending_applications[target_msg_id]'
+            # ТЕПЕРЬ АНКЕТА ОСТАЁТСЯ В ПАМЯТИ, И ВЫ МОЖЕТЕ ОТВЕЧАТЬ НА НЕЁ СКОЛЬКО УГОДНО РАЗ!
+            
         except Exception as e:
             await message.reply(f"❌ Не удалось отправить сообщение игроку. Ошибка: {e}")
     else:
