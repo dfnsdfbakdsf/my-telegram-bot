@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord.ui import Button, View
 import os
 import sys
 import datetime
@@ -64,35 +63,15 @@ blacklist = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. КНОПКА ДЛЯ СТАРТА АНКЕТЫ (ИСПРАВЛЕНА ОШИБКА ВРЕМЕНИ)
+# 1. ЛОГИКА АНКЕТЫ В ЛС (Без кнопок, открывается мгновенно)
 # ==========================================
-class StartButtonView(View):
-    def __init__(self):
-        super().__init__(timeout=120)
-
-    @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
-    async def start_survey(self, interaction: discord.Interaction, button: Button):
-        # 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: defer() говорит Discord'у "Подожди, я сейчас отвечу"
-        await interaction.response.defer(ephemeral=True)
-
-        user_id = interaction.user.id
-        
-        # 🚫 ПРОВЕРКА НА ЧЕРНЫЙ СПИСОК
-        if user_id in blacklist:
-            await interaction.followup.send("⛔ **Вы в черном списке клана!** Вам запрещено подавать заявки.", ephemeral=True)
-            return
-            
-        # Отправляем уведомление в чат
-        await interaction.followup.send("📨 Я отправил вам анкету в ЛС! Проверьте вкладку с ботом.", ephemeral=True)
-        
-        # Запускаем анкету
-        await ask_questions(interaction.user)
-
-# ==========================================
-# 2. ЛОГИКА АНКЕТЫ В ЛС
-# ==========================================
-async def ask_questions(user: discord.User):
+async def start_application(user: discord.User):
     try:
+        # 🚫 ПРОВЕРКА НА ЧЕРНЫЙ СПИСОК
+        if user.id in blacklist:
+            await user.send("⛔ **Вы в черном списке клана!** Вам запрещено подавать заявки.")
+            return
+
         questions = [
             {"key": "name", "q": "**Как вас зовут?** (Ваше реальное имя)", "type": "text"},
             {"key": "age", "q": "**Сколько вам лет?** (Введите число)", "type": "number"},
@@ -139,6 +118,7 @@ async def ask_questions(user: discord.User):
                     await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa` или `!start`.")
                     return
 
+        # Собираем анкету
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
             description=f"От: {user.mention} (ID: {user.id})",
@@ -155,8 +135,6 @@ async def ask_questions(user: discord.User):
         embed.add_field(name="👹 PvE (1-10)", value=answers["pve"], inline=True)
         embed.add_field(name="👥 Сколько играют на сервере", value=answers["server_population"], inline=False)
 
-        await user.send("⏳ Ваша анкета обрабатывается и отправляется руководству...")
-        
         try:
             target_channel = bot.get_channel(CHANNEL_ID)
             if target_channel:
@@ -177,7 +155,7 @@ async def ask_questions(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА
+# 2. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -230,7 +208,7 @@ async def on_message(message):
         await message.reply("⚠️ Я не нашёл анкету перед этим сообщением. Убедитесь, что вы ответили под анкетой.", mention_author=False)
 
 # ==========================================
-# 4. КОМАНДЫ
+# 3. КОМАНДЫ БОТА
 # ==========================================
 @bot.event
 async def on_ready():
@@ -238,6 +216,16 @@ async def on_ready():
     print(f'✅ Бот запущен! Имя: {bot.user.name}')
     print(f'📬 Всего подано заявок: {stats["total_applications"]}')
     print('='*40)
+
+@bot.command()
+async def start(ctx):
+    await ctx.send("📨 Открываю анкету в личных сообщениях...")
+    await start_application(ctx.author)
+
+@bot.command()
+async def anketa(ctx):
+    await ctx.send("📨 Открываю анкету в личных сообщениях...")
+    await start_application(ctx.author)
 
 @bot.command()
 async def view(ctx, member: discord.Member):
@@ -279,20 +267,6 @@ async def unblacklist(ctx, member: discord.Member):
     blacklist.remove(member.id)
     save_blacklist(blacklist)
     await ctx.send(f"✅ {member.mention} удален из черного списка.")
-
-@bot.command()
-async def start(ctx):
-    embed = discord.Embed(
-        title="🎮 Добро пожаловать в клан!",
-        description="Мы рады видеть тебя здесь! Чтобы вступить в наш клан Minecraft, тебе нужно заполнить анкету.\n\nНажми на кнопку ниже, чтобы начать!",
-        color=discord.Color.blue()
-    )
-    embed.set_footer(text="Анкета займёт всего пару минут")
-    await ctx.send(embed=embed, view=StartButtonView())
-
-@bot.command()
-async def anketa(ctx):
-    await ctx.send("👋 Нажмите на кнопку ниже, чтобы начать анкету:", view=StartButtonView())
 
 @bot.command()
 async def addadmin(ctx, member: discord.Member):
@@ -337,7 +311,7 @@ async def help(ctx):
         title="📋 Команды бота",
         color=discord.Color.gold()
     )
-    embed.add_field(name="!start / !anketa", value="🎮 Начать анкету", inline=False)
+    embed.add_field(name="!start / !anketa", value="📨 Начать анкету (в ЛС)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету игрока", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 Забанить игрока", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Разбанить игрока", inline=False)
