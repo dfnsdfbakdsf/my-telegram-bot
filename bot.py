@@ -1,55 +1,118 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button  # Добавили для создания кнопок (как в Telegram)
-import sys
+from discord.ui import Modal, TextInput
 import os
+import sys
+import datetime
 
-# 🛡️ Берем токен из переменной окружения
+# 🛡️ Токен из переменной окружения
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 if TOKEN is None:
-    print('❌ ОШИБКА: Не найден токен в переменных окружения!')
-    print('❗ Проверьте настройки хостинга (переменная DISCORD_TOKEN)')
+    print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
     sys.exit()
 
-print(f'🚀 ЗАПУСК БОТА...')
-
+# Настройки бота
 intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
-# --- Класс для создания Кнопок (как клавиатура в Telegram) ---
-class MenuView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
+# ==========================================
+# 1. СОЗДАЕМ МОДАЛЬНОЕ ОКНО (ФОРМА АНКЕТЫ)
+# ==========================================
+class ClanApplicationModal(Modal, title="📋 Анкета на вступление в клан"):
+    
+    # Поля для заполнения (как вопросы в Google Форме)
+    name = TextInput(
+        label="Как вас зовут? (реальное имя)",
+        placeholder="Введите ваше имя...",
+        required=True,
+        style=discord.TextStyle.short
+    )
+    
+    nickname = TextInput(
+        label="Ваш никнейм на сервере Minecraft",
+        placeholder="Например: _Vortex_",
+        required=True,
+        style=discord.TextStyle.short
+    )
+    
+    donate = TextInput(
+        label="Какой у вас донат?",
+        placeholder="VIP, Premium, Без доната, и т.д.",
+        required=True,
+        style=discord.TextStyle.short
+    )
+    
+    playtime = TextInput(
+        label="Сколько часов в день играете?",
+        placeholder="Например: 3-4 часа",
+        required=True,
+        style=discord.TextStyle.short
+    )
 
-    @discord.ui.button(label="🕒 Время", style=discord.ButtonStyle.green)
-    async def time_button(self, interaction: discord.Interaction, button: Button):
-        import datetime
-        now = datetime.datetime.now().strftime("%H:%M:%S")
-        await interaction.response.send_message(f"🕒 Текущее время: {now}", ephemeral=True)
+    pvp = TextInput(
+        label="Оцените свой навык PvP (от 1 до 10)",
+        placeholder="Введите число от 1 до 10",
+        required=True,
+        style=discord.TextStyle.short
+    )
 
-    @discord.ui.button(label="📊 Инфо", style=discord.ButtonStyle.blurple)
-    async def info_button(self, interaction: discord.Interaction, button: Button):
+    pve = TextInput(
+        label="Оцените свой навык PvE (от 1 до 10)",
+        placeholder="Введите число от 1 до 10",
+        required=True,
+        style=discord.TextStyle.short
+    )
+
+    server_population = TextInput(
+        label="Сколько всего человек играет на сервере?",
+        placeholder="Например: 50-100",
+        required=True,
+        style=discord.TextStyle.short
+    )
+
+    # Что происходит, когда пользователь нажал "Отправить"
+    async def on_submit(self, interaction: discord.Interaction):
+        # Собираем всё в одну красивую анкету
         embed = discord.Embed(
-            title=f"Информация о боте",
-            color=discord.Color.blue()
+            title="📥 Новая анкета на вступление в клан!",
+            description=f"От: {interaction.user.mention}",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now()
         )
-        embed.add_field(name="Серверов", value=len(bot.guilds))
-        embed.add_field(name="Задержка", value=f"{round(bot.latency * 1000)}ms")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        
+        embed.add_field(name="👤 Реальное имя", value=self.name.value, inline=False)
+        embed.add_field(name="🪪 Никнейм MC", value=self.nickname.value, inline=False)
+        embed.add_field(name="💰 Донат", value=self.donate.value, inline=False)
+        embed.add_field(name="⏳ В день играет", value=self.playtime.value, inline=False)
+        embed.add_field(name="⚔️ PvP (1-10)", value=self.pvp.value, inline=True)
+        embed.add_field(name="👹 PvE (1-10)", value=self.pve.value, inline=True)
+        embed.add_field(name="👥 Онлайн сервера", value=self.server_population.value, inline=False)
+        
+        embed.set_footer(text=f"ID заявителя: {interaction.user.id}")
 
-    @discord.ui.button(label="❌ Закрыть меню", style=discord.ButtonStyle.red)
-    async def close_button(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content="✅ Меню закрыто.", view=None, embed=None)
+        # Отправляем анкету прямо в этот же чат (чтобы все видели)
+        await interaction.response.send_message(embed=embed)
+        
+        # (Опционально) Если хотите, чтобы анкета дублировалась вам в ЛС, раскомментируйте:
+        # await interaction.user.send("✅ Ваша анкета отправлена! Ожидайте ответа от руководства клана.")
 
-# --- События ---
+    # Если пользователь нажал "Отмена" или закрыл окно
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        await interaction.response.send_message("❌ Произошла ошибка при отправке анкеты. Попробуйте снова.", ephemeral=True)
+
+# ==========================================
+# 2. СОБЫТИЯ И КОМАНДЫ
+# ==========================================
+
 @bot.event
 async def on_ready():
-    print('='*60)
-    print('✅ БОТ УСПЕШНО ЗАПУЩЕН!')
-    print(f'📌 Имя: {bot.user.name}')
-    print(f'🆔 ID: {bot.user.id}')
-    print('='*60)
+    print('='*40)
+    print(f'✅ Бот запущен! Имя: {bot.user.name}')
+    print(f'🚀 Готов принимать анкеты!')
+    print('='*40)
 
 @bot.event
 async def on_message(message):
@@ -57,83 +120,30 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# --- Команды ---
-
-# 1. Классическое приветствие
+# Команда для вызова анкеты
 @bot.command()
-async def start(ctx):
-    await ctx.send(f'Привет, {ctx.author.mention}! Я твой Discord-бот 🤖')
+async def anketa(ctx):
+    # Открываем модальное окно перед пользователем
+    await ctx.send("📝 Открываю форму для заполнения анкеты...", ephemeral=True)
+    await ctx.interaction.response.send_modal(ClanApplicationModal())
 
-@bot.command()
-async def hello(ctx):
-    await ctx.send(f'Привет, {ctx.author.mention}! 👋')
-
-@bot.command()
-async def ping(ctx):
-    latency = round(bot.latency * 1000)
-    await ctx.send(f'🏓 Понг! {latency}ms')
-
-# 2. Команда с меню (аналог Inline Keyboard в Telegram)
-@bot.command()
-async def menu(ctx):
-    embed = discord.Embed(
-        title="📋 Главное меню",
-        description="Нажмите на кнопки ниже, чтобы получить информацию:",
-        color=discord.Color.green()
-    )
-    # Отправляем Embed вместе с кнопками
-    await ctx.send(embed=embed, view=MenuView())
-
-# 3. Команда info
-@bot.command()
-async def info(ctx):
-    embed = discord.Embed(
-        title=f"Информация о {bot.user.name}",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="ID", value=bot.user.id)
-    embed.add_field(name="Серверов", value=len(bot.guilds))
-    embed.add_field(name="Задержка", value=f"{round(bot.latency * 1000)}ms")
-    embed.add_field(name="Префикс", value="!")
-    await ctx.send(embed=embed)
-
-# 4. Очистка чата (аналог /clear)
-@bot.command()
-async def clear(ctx, amount: int = 5):
-    if amount < 1 or amount > 100:
-        await ctx.send("❌ Укажите число от 1 до 100")
-        return
-    await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"✅ Удалено {amount} сообщений", delete_after=3)
-
-# 5. Обновленная команда Help
+# Простая команда помощи
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
-        title="📋 Список команд",
+        title="📋 Команды для набора в клан",
         description="Используйте `!` перед командой",
         color=discord.Color.gold()
     )
-    
-    commands_list = [
-        ("start / hello", "Поздороваться с ботом"),
-        ("ping", "Проверить задержку"),
-        ("menu", "Открыть меню с кнопками"),
-        ("info", "Информация о боте"),
-        ("clear [число]", "Очистить сообщения (1-100)"),
-        ("help", "Показать это сообщение")
-    ]
-    
-    for cmd, desc in commands_list:
-        embed.add_field(name=f"!{cmd}", value=desc, inline=False)
-    
+    embed.add_field(name="!anketa", value="📝 Открыть анкету на вступление в клан", inline=False)
+    embed.add_field(name="!help", value="Показать это сообщение", inline=False)
     await ctx.send(embed=embed)
 
-# --- Запуск ---
+# ==========================================
+# ЗАПУСК БОТА
+# ==========================================
 if __name__ == "__main__":
     try:
         bot.run(TOKEN)
-    except discord.LoginFailure:
-        print('❌ ОШИБКА: Неверный токен!')
     except Exception as e:
-        print(f'❌ ОШИБКА: {e}')
+        print(f'❌ ОШИБКА ЗАПУСКА: {e}')
