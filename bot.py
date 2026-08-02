@@ -1,12 +1,12 @@
 import discord
 from discord.ext import commands
-from discord.ui import Modal, TextInput
 import os
 import sys
 import datetime
 import re
 import json
 import time
+import asyncio
 
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -62,25 +62,61 @@ blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО
+# 1. АНКЕТА В ЛС (ВМЕСТО МОДАЛЬНОГО ОКНА)
 # ==========================================
-class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
-    name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
-    age = TextInput(label="Сколько вам лет?", placeholder="Например: 16", required=True)
-    nickname = TextInput(label="Ваш никнейм на сервере Minecraft", placeholder="Например: _Vortex_", required=True)
-    donate = TextInput(label="Какой у вас донат?", placeholder="VIP, Premium или без доната", required=True)
-    playtime = TextInput(label="Сколько часов в день играете?", placeholder="Только число", required=True)
-    pvp = TextInput(label="Навык PvP (от 1 до 10)", placeholder="Введите число", required=True)
-    pve = TextInput(label="Навык PvE (от 1 до 10)", placeholder="Введите число", required=True)
-    server_population = TextInput(label="Сколько всего вы играете на сервере?", placeholder="Напишите количество", required=True)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user = interaction.user
-
+async def start_dm_application(user: discord.User):
+    try:
         if user.id in blacklisted_users:
-            await interaction.response.send_message("⛔ Вы в черном списке клана!", ephemeral=True)
+            await user.send("⛔ Вы в черном списке клана!")
             return
 
+        questions = [
+            {"key": "name", "q": "**Как вас зовут?** (Ваше реальное имя)"},
+            {"key": "age", "q": "**Сколько вам лет?** (Введите число)"},
+            {"key": "nickname", "q": "**Ваш никнейм на сервере Minecraft?**"},
+            {"key": "donate", "q": "**Какой у вас донат?** (VIP, Premium или без доната)"},
+            {"key": "playtime", "q": "**Сколько часов в день вы играете?** (Введите только число)"},
+            {"key": "pvp", "q": "**Оцените свой навык PvP (от 1 до 10)?** (Введите число)"},
+            {"key": "pve", "q": "**Оцените свой навык PvE (от 1 до 10)?** (Введите число)"},
+            {"key": "server_population", "q": "**Сколько всего вы играете на сервере?** (Напишите количество)"}
+        ]
+        
+        answers = {}
+        await user.send("👋 **Привет! Я бот для сбора анкет в клан.**\nОтвечай на мои вопросы по очереди, и в конце я отправлю твою анкету.")
+
+        for question in questions:
+            while True:
+                await user.send(question["q"])
+                
+                def check(msg):
+                    return msg.author == user and isinstance(msg.channel, discord.DMChannel)
+                
+                try:
+                    reply = await bot.wait_for('message', timeout=300.0, check=check)
+                    answer_text = reply.content.strip()
+
+                    if question["key"] in ["age", "playtime"]:
+                        if not answer_text.isdigit() or int(answer_text) < 1:
+                            await user.send("❌ Ошибка! Пожалуйста, введите **положительное число**. Попробуйте снова.")
+                            continue
+                    
+                    if question["key"] in ["pvp", "pve"]:
+                        if not answer_text.isdigit():
+                            await user.send("❌ Ошибка! Введите **только цифру** от 1 до 10.")
+                            continue
+                        num = int(answer_text)
+                        if num < 1 or num > 10:
+                            await user.send("❌ Ошибка! Введите число **от 1 до 10**.")
+                            continue
+
+                    answers[question["key"]] = answer_text
+                    break 
+
+                except asyncio.TimeoutError:
+                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa`.")
+                    return
+
+        # Собираем анкету
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
             description=f"От: {user.mention} (ID: {user.id})",
@@ -88,14 +124,14 @@ class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
             timestamp=datetime.datetime.now()
         )
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="👤 Реальное имя", value=self.name.value, inline=False)
-        embed.add_field(name="🎂 Возраст", value=f"{self.age.value} лет", inline=False)
-        embed.add_field(name="🪪 Никнейм MC", value=self.nickname.value, inline=False)
-        embed.add_field(name="💰 Донат", value=self.donate.value, inline=False)
-        embed.add_field(name="⏳ В день играет", value=f"{self.playtime.value} ч.", inline=False)
-        embed.add_field(name="⚔️ PvP (1-10)", value=self.pvp.value, inline=True)
-        embed.add_field(name="👹 PvE (1-10)", value=self.pve.value, inline=True)
-        embed.add_field(name="👥 Сколько играют на сервере", value=self.server_population.value, inline=False)
+        embed.add_field(name="👤 Реальное имя", value=answers["name"], inline=False)
+        embed.add_field(name="🎂 Возраст", value=f"{answers['age']} лет", inline=False)
+        embed.add_field(name="🪪 Никнейм MC", value=answers["nickname"], inline=False)
+        embed.add_field(name="💰 Донат", value=answers["donate"], inline=False)
+        embed.add_field(name="⏳ В день играет", value=f"{answers['playtime']} ч.", inline=False)
+        embed.add_field(name="⚔️ PvP (1-10)", value=answers["pvp"], inline=True)
+        embed.add_field(name="👹 PvE (1-10)", value=answers["pve"], inline=True)
+        embed.add_field(name="👥 Сколько играют на сервере", value=answers["server_population"], inline=False)
 
         try:
             target_channel = bot.get_channel(CHANNEL_ID)
@@ -104,12 +140,15 @@ class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
                 pending_applications[sent_message.id] = [user.id, int(time.time())]
                 stats["total_applications"] += 1
                 save_stats(stats)
-                await interaction.response.send_message("✅ Анкета успешно отправлена руководству! Ожидайте ответа.", ephemeral=True)
+                await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
             else:
-                await interaction.response.send_message("❌ Ошибка: канал не найден.", ephemeral=True)
+                await user.send("❌ Ошибка: канал не найден.")
         except Exception as e:
-            await interaction.response.send_message("❌ Ошибка при отправке анкеты.", ephemeral=True)
+            await user.send("❌ Произошла ошибка при отправке анкеты.")
             print(f"Ошибка: {e}")
+
+    except Exception as e:
+        print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
 # 2. ОТВЕТЫ АДМИНА
@@ -152,50 +191,25 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ (ОЧИЩЕНЫ ОТ ДУБЛИКАТОВ)
+# 3. КОМАНДЫ БОТА
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен! Ошибок больше нет.')
+    print('✅ Бот запущен! Теперь анкеты работают через ЛС.')
 
-# ✅ ЕДИНСТВЕННАЯ РАБОЧАЯ КОМАНДА !start
 @bot.command()
 async def start(ctx):
     if ctx.author.id in blacklisted_users:
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
     
-    await ctx.send("📝 Открываю анкету...", ephemeral=True)
-    
-    # ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: мы вызываем другую функцию для открытия модалки, чтобы не трогать interaction
-    # Это обходной путь, который 100% работает на префиксных командах
-    await ctx.invoke(open_modal_command)
+    await ctx.send("📨 Я открываю анкету в Личных Сообщениях. Проверьте вкладку с ботом!", ephemeral=True)
+    await start_dm_application(ctx.author)
 
-# Скрытая команда для открытия анкеты (пользователь её не видит)
-@bot.command(name="open_modal")
-async def open_modal_command(ctx):
-    if ctx.author.id in blacklisted_users:
-        return
-    # Открываем модальное окно через взаимодействие
-    # В данном случае мы полагаемся на то, что бот создаст взаимодействие внутри себя
-    await ctx.send("📝 Загружаю форму...", ephemeral=True)
-    
-    # Чтобы гарантировать работу, мы используем гибридный подход для модального окна
-    # Это сложный момент, но он работает
-    try:
-        await ctx.interaction.response.send_modal(ApplicationModal())
-    except AttributeError:
-        # Если interaction не сработал (NoneType), переключаемся на резервный метод
-        await ctx.send("⚠️ Не удалось открыть анкету. Попробуйте написать `/start`.", ephemeral=True)
-
-# ✅ Команда !anketa вызывает !start, чтобы не дублировать код
 @bot.command()
 async def anketa(ctx):
     await ctx.invoke(bot.get_command("start"))
 
-# ==========================================
-# 4. ОСТАЛЬНЫЕ КОМАНДЫ (Без изменений)
-# ==========================================
 @bot.command()
 async def view(ctx, member: discord.Member):
     for msg_id, data in list(pending_applications.items()):
@@ -243,7 +257,7 @@ async def stats(ctx):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
-    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету", inline=False)
+    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (в ЛС)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
