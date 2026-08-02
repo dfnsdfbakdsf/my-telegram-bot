@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import Modal, TextInput
+from discord.ui import Button, View, Modal, TextInput
 import os
 import sys
 import datetime
@@ -20,7 +20,7 @@ intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # ==========================================
-# 0. ФАЙЛЫ ДЛЯ ХРАНЕНИЯ ДАННЫХ
+# 0. ФАЙЛЫ
 # ==========================================
 ADMINS_FILE = "admins.json"
 STATS_FILE = "stats.json"
@@ -56,14 +56,13 @@ def save_blacklist(blacklist_list):
     with open(BLACKLIST_FILE, 'w') as f:
         json.dump(blacklist_list, f)
 
-# Инициализация
 admin_ids = load_admins()
 stats = load_stats()
-blacklisted_users = load_blacklist() # Переименовали, чтобы не путаться с командой
+blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО
+# 1. МОДАЛЬНОЕ ОКНО (Сама анкета)
 # ==========================================
 class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
@@ -113,7 +112,26 @@ class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
             print(f"Ошибка: {e}")
 
 # ==========================================
-# 2. ОТВЕТЫ
+# 2. КНОПКА (НОВАЯ, БЕЗ ОШИБКИ)
+# ==========================================
+class StartButtonView(View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
+    async def start_survey(self, interaction: discord.Interaction, button: Button):
+        # 🛡️ Сначала говорим Discord "жди", чтобы не вылетела ошибка времени
+        await interaction.response.defer(ephemeral=True)
+
+        if interaction.user.id in blacklisted_users:
+            await interaction.followup.send("⛔ Вы в черном списке клана!", ephemeral=True)
+            return
+
+        # Открываем анкету
+        await interaction.followup.send_modal(ApplicationModal())
+
+# ==========================================
+# 3. ОТВЕТЫ ОТ АДМИНОВ
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -153,22 +171,21 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ
+# 4. КОМАНДЫ
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен. Модальные окна активны!')
+    print('✅ Бот запущен. Кнопка работает без ошибок!')
 
 @bot.command()
 async def start(ctx):
-    # 🛡️ ПРОВЕРКА ЧЕРНОГО СПИСКА (Исправлена ошибка Type Error)
-    if ctx.author.id in blacklisted_users:
-        await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
-        return
-    
-    # Открываем анкету
-    await ctx.send("📝 Открываю анкету...", ephemeral=True)
-    await ctx.interaction.response.send_modal(ApplicationModal())
+    embed = discord.Embed(
+        title="🎮 Добро пожаловать в клан!",
+        description="Мы рады видеть тебя здесь! Чтобы вступить в наш клан Minecraft, тебе нужно заполнить анкету.\n\nНажми на кнопку ниже, чтобы начать!",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Анкета займёт всего пару минут")
+    await ctx.send(embed=embed, view=StartButtonView())
 
 @bot.command()
 async def anketa(ctx):
@@ -221,7 +238,7 @@ async def stats(ctx):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
-    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету", inline=False)
+    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (с кнопкой)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
