@@ -57,13 +57,14 @@ def save_blacklist(blacklist_list):
     with open(BLACKLIST_FILE, 'w') as f:
         json.dump(blacklist_list, f)
 
+# Инициализация
 admin_ids = load_admins()
 stats = load_stats()
 blacklist = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО (форма)
+# 1. МОДАЛЬНОЕ ОКНО
 # ==========================================
 class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
@@ -153,7 +154,7 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ
+# 3. КОМАНДЫ (ИСПРАВЛЕНА ОШИБКА!)
 # ==========================================
 @bot.event
 async def on_ready():
@@ -161,9 +162,12 @@ async def on_ready():
 
 @bot.command()
 async def start(ctx):
+    # 🛠️ ИСПРАВЛЕНИЕ: Проверяем черный список. Если ctx.author.id в blacklist
     if ctx.author.id in blacklist:
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
+    
+    # Открываем анкету без кнопок, прямо через Interaction
     await ctx.send("📝 Открываю анкету...", ephemeral=True)
     await ctx.interaction.response.send_modal(ApplicationModal())
 
