@@ -61,9 +61,10 @@ admin_ids = load_admins()
 stats = load_stats()
 blacklisted_users = load_blacklist()
 pending_applications = {}
+pending_confirmations = {} # Хранит подтверждения (msg_id -> [user_id, text])
 
 # ==========================================
-# 1. КНОПКА ДЛЯ ОТКРЫТИЯ АНКЕТЫ (РАБОТАЕТ 100%)
+# 1. КНОПКА ДЛЯ ОТКРЫТИЯ АНКЕТЫ
 # ==========================================
 class StartButtonView(View):
     def __init__(self):
@@ -73,12 +74,10 @@ class StartButtonView(View):
     async def start_survey(self, interaction: discord.Interaction, button: Button):
         user = interaction.user
         
-        # Проверка на ЧС
         if user.id in blacklisted_users:
             await interaction.response.send_message("⛔ Вы в черном списке клана!", ephemeral=True)
             return
         
-        # Открываем анкету в ЛС
         await interaction.response.send_message("📨 Я отправил вам анкету в Личные Сообщения! Проверьте вкладку с ботом.", ephemeral=True)
         await start_dm_application(user)
 
@@ -133,7 +132,6 @@ async def start_dm_application(user: discord.User):
                     await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa` или `!start`.")
                     return
 
-        # Собираем анкету
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
             description=f"От: {user.mention} (ID: {user.id})",
@@ -161,20 +159,39 @@ async def start_dm_application(user: discord.User):
             else:
                 await user.send("❌ Ошибка: канал не найден.")
         except Exception as e:
-            await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
+            await user.send("❌ Произошла ошибка при отправке анкеты.")
             print(f"Ошибка: {e}")
 
     except Exception as e:
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОТВЕТЫ АДМИНА
+# 3. ОТВЕТЫ АДМИНА (С ДВУХЭТАПНОЙ ПРОВЕРКОЙ)
 # ==========================================
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
     await bot.process_commands(message)
+
+    # ✅ Обработка подтверждения (пункт 14)
+    if message.reference and message.reference.message_id in pending_confirmations:
+        if message.content.strip().lower() == "да":
+            data = pending_confirmations.pop(message.reference.message_id, None)
+            if data:
+                target_user_id, reply_text = data
+                try:
+                    player = await bot.fetch_user(target_user_id)
+                    await player.send(f"📩 **Ответ от руководства:**\n\n{reply_text}")
+                    await message.reply(f"✅ Ответ успешно отправлен!", mention_author=False)
+                except:
+                    await message.reply("❌ Не удалось отправить ответ.", mention_author=False)
+                return
+        else:
+            await message.reply("❌ Подтверждение не получено. Отправка отменена. Чтобы подтвердить, напишите просто **Да**.")
+            return
+
+    # Обработка команд и анкет
     if message.channel.id != CHANNEL_ID:
         return
     if bot.user not in message.mentions:
@@ -198,12 +215,14 @@ async def on_message(message):
             await message.reply("⏰ Анкета устарела (более 3 дней).", mention_author=False)
             del pending_applications[target_msg_id]
             return
-        try:
-            player = await bot.fetch_user(target_user_id)
-            await player.send(f"📩 **Ответ от руководства:**\n\n{clean_text}")
-            await message.reply(f"✅ Ответ отправлен {player.mention}.", mention_author=False)
-        except:
-            await message.reply("❌ Не удалось отправить ответ.", mention_author=False)
+        
+        # 🛡️ Запрашиваем подтверждение
+        confirm_msg = await message.reply(
+            f"🛡️ **Подтверждение отправки**\nВы собираетесь отправить игроку:\n```{clean_text}```\n\nНапишите **Да** в ответ на это сообщение, чтобы подтвердить отправку.",
+            mention_author=False
+        )
+        # Сохраняем в ожидание подтверждения
+        pending_confirmations[confirm_msg.id] = [target_user_id, clean_text]
     else:
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
@@ -212,7 +231,7 @@ async def on_message(message):
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен! Кнопка работает.')
+    print('✅ Бот запущен! Статистика исправлена.')
 
 @bot.command()
 async def start(ctx):
@@ -270,10 +289,14 @@ async def unblacklist(ctx, member: discord.Member):
 
 @bot.command()
 async def stats(ctx):
-    embed = discord.Embed(title="📊 Статистика", color=discord.Color.purple())
-    embed.add_field(name="📨 Анкет", value=str(stats["total_applications"]))
-    embed.add_field(name="👑 Админов", value=str(len(admin_ids)))
-    embed.add_field(name="⛔ В ЧС", value=str(len(blacklisted_users)))
+    embed = discord.Embed(
+        title="📊 Статистика набора в клан",
+        color=discord.Color.purple()
+    )
+    embed.add_field(name="📨 Всего подано анкет", value=str(stats["total_applications"]), inline=False)
+    embed.add_field(name="👑 Администраторов (могут отвечать)", value=str(len(admin_ids)), inline=False)
+    embed.add_field(name="⛔ В черном списке", value=str(len(blacklisted_users)), inline=False)
+    embed.set_footer(text="Статистика обновляется в реальном времени")
     await ctx.send(embed=embed)
 
 @bot.command()
