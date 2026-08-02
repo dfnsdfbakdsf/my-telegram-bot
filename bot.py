@@ -2,22 +2,15 @@ import discord
 from discord.ext import commands
 import sys
 
-# ============================================
-# 🔑 ВСТАВЬТЕ СВОЙ ТОКЕН СЮДА (ОДНО МЕСТО!)
-# ============================================
+# ВСТАВЬТЕ ТОКЕН
 TOKEN = 'MTUzMzQzNzQ5MTMxMzM3NzM3MQ.G0oVw5.CQK0W-6Kvdz75CfqH6dZEnQeHYBoWI4cD3UAns'
-# ============================================
 
-# Проверка что токен вставлен
 if TOKEN == 'СЮДА_ВСТАВЬТЕ_ВАШ_ТОКЕН':
     print('❌ ОШИБКА: Вы не вставили токен!')
-    print('   Замените "СЮДА_ВСТАВЬТЕ_ВАШ_ТОКЕН" на ваш токен')
     sys.exit()
 
 print(f'🚀 ЗАПУСК БОТА...')
-print(f'📝 Токен: {TOKEN[:15]}... (первые 15 символов)')
 
-# Настройка бота
 intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -102,11 +95,10 @@ async def help(ctx):
     
     await ctx.send(embed=embed)
 
-# Запуск
 if __name__ == "__main__":
     try:
         bot.run(TOKEN)
     except discord.LoginFailure:
-        print('❌ ОШИБКА: Неверный токен! Сбросьте токен в Developer Portal')
+        print('❌ ОШИБКА: Неверный токен!')
     except Exception as e:
         print(f'❌ ОШИБКА: {e}')
