@@ -8,7 +8,8 @@ import asyncio
 
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
-ADMIN_ID = 1459971163013910641  # 🔴 ЗАМЕНИТЕ НА ВАШ ID!
+ADMIN_ID = 1459971163013910641  # Ваш ID (оставил на всякий случай)
+CHANNEL_ID = 1526651138378567842  # 🆕 ID канала, куда отправлять анкеты
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
@@ -18,56 +19,72 @@ intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # ==========================================
-# 1. КНОПКА ДЛЯ ОТКРЫТИЯ ЛС
+# 1. КНОПКА
 # ==========================================
 class StartButtonView(View):
     def __init__(self):
-        super().__init__(timeout=120) # Кнопка живет 2 минуты
+        super().__init__(timeout=120)
 
     @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
     async def start_survey(self, interaction: discord.Interaction, button: Button):
-        # Отвечаем, чтобы Discord не ругался
         await interaction.response.send_message("📨 Я отправил вам анкету в Личные Сообщения! Проверьте вкладку с ботом.", ephemeral=True)
-        
-        # Запускаем анкетирование в ЛС
         await ask_questions(interaction.user)
 
 # ==========================================
-# 2. ЛОГИКА АНКЕТЫ В ЛС (Самый надежный метод)
+# 2. АНКЕТА В ЛС (С проверками)
 # ==========================================
 async def ask_questions(user: discord.User):
     try:
-        # Определяем вопросы и куда сохранять ответы
         questions = [
-            {"key": "name", "q": "**Как вас зовут?** (Ваше реальное имя)"},
-            {"key": "nickname", "q": "**Ваш никнейм на сервере Minecraft?**"},
-            {"key": "donate", "q": "**Какой у вас донат?** (VIP, Premium или без доната)"},
-            {"key": "playtime", "q": "**Сколько часов в день играете?**"},
-            {"key": "pvp", "q": "**Оцените свой навык PvP (от 1 до 10)?**"},
-            {"key": "pve", "q": "**Оцените свой навык PvE (от 1 до 10)?**"},
-            {"key": "server_population", "q": "**Сколько всего человек играет на сервере?**"}
+            {"key": "name", "q": "**Как вас зовут?** (Ваше реальное имя)", "type": "text"},
+            {"key": "nickname", "q": "**Ваш никнейм на сервере Minecraft?**", "type": "text"},
+            {"key": "donate", "q": "**Какой у вас донат?** (VIP, Premium или без доната)", "type": "text"},
+            {"key": "playtime", "q": "**Сколько часов в день вы играете?** (Введите только число)", "type": "number"},
+            {"key": "pvp", "q": "**Оцените свой навык PvP (от 1 до 10)?** (Введите число)", "type": "range"},
+            {"key": "pve", "q": "**Оцените свой навык PvE (от 1 до 10)?** (Введите число)", "type": "range"},
+            {"key": "server_population", "q": "**Сколько всего вы играете на сервере?** (Напишите количество)", "type": "text"}
         ]
         
-        answers = {} # Словарь для ответов
-        await user.send("👋 **Привет! Я бот для сбора анкет в клан.**\nОтвечай на мои вопросы по очереди, и в конце я отправлю твою анкету админу.")
+        answers = {}
+        await user.send("👋 **Привет! Я бот для сбора анкет в клан.**\nОтвечай на мои вопросы по очереди, и в конце я отправлю твою анкету.")
 
         for question in questions:
-            # Отправляем вопрос и ждем 1 ответ (таймаут 5 минут)
-            await user.send(question["q"])
-            
-            def check(msg):
-                return msg.author == user and isinstance(msg.channel, discord.DMChannel)
-            
-            try:
-                # Ждем ответ от пользователя
-                reply = await bot.wait_for('message', timeout=300.0, check=check)
-                answers[question["key"]] = reply.content
-            except asyncio.TimeoutError:
-                await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa`.")
-                return
+            while True: # Цикл для проверки ответа
+                await user.send(question["q"])
+                
+                def check(msg):
+                    return msg.author == user and isinstance(msg.channel, discord.DMChannel)
+                
+                try:
+                    reply = await bot.wait_for('message', timeout=300.0, check=check)
+                    answer_text = reply.content.strip()
+
+                    # ✅ Проверка для числовых полей
+                    if question["type"] == "number":
+                        if not answer_text.isdigit():
+                            await user.send("❌ Ошибка! Пожалуйста, введите **только число** (например: 3). Попробуйте снова.")
+                            continue # Запускает вопрос заново
+                    
+                    # ✅ Проверка для PvP и PvE (число от 1 до 10)
+                    if question["type"] == "range":
+                        if not answer_text.isdigit():
+                            await user.send("❌ Ошибка! Введите **только цифру** от 1 до 10.")
+                            continue
+                        num = int(answer_text)
+                        if num < 1 or num > 10:
+                            await user.send("❌ Ошибка! Введите число **от 1 до 10**.")
+                            continue
+
+                    # Если всё проверки пройдены, сохраняем ответ и идём к следующему вопросу
+                    answers[question["key"]] = answer_text
+                    break 
+
+                except asyncio.TimeoutError:
+                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa`.")
+                    return
 
         # ==========================================
-        # 3. ВСЕ ОТВЕТЫ СОБРАНЫ - ОТПРАВЛЯЕМ АДМИНУ
+        # 3. ОТПРАВКА АНКЕТЫ В КАНАЛ (по ID)
         # ==========================================
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
@@ -80,19 +97,24 @@ async def ask_questions(user: discord.User):
         embed.add_field(name="👤 Реальное имя", value=answers["name"], inline=False)
         embed.add_field(name="🪪 Никнейм MC", value=answers["nickname"], inline=False)
         embed.add_field(name="💰 Донат", value=answers["donate"], inline=False)
-        embed.add_field(name="⏳ В день играет", value=answers["playtime"], inline=False)
+        embed.add_field(name="⏳ В день играет", value=f"{answers['playtime']} ч.", inline=False)
         embed.add_field(name="⚔️ PvP (1-10)", value=answers["pvp"], inline=True)
         embed.add_field(name="👹 PvE (1-10)", value=answers["pve"], inline=True)
-        embed.add_field(name="👥 Онлайн сервера", value=answers["server_population"], inline=False)
+        embed.add_field(name="👥 Сколько играют на сервере", value=answers["server_population"], inline=False)
 
-        # Отправляем админу в ЛС
+        # Отправляем в УКАЗАННЫЙ КАНАЛ
         try:
-            admin_user = await bot.fetch_user(ADMIN_ID)
-            await admin_user.send(embed=embed)
-            await user.send("✅ **Готово! Твоя анкета успешно отправлена администрации клана!** Ожидай ответа.")
+            target_channel = bot.get_channel(CHANNEL_ID)
+            if target_channel:
+                await target_channel.send(embed=embed)
+                await user.send("✅ **Готово! Твоя анкета успешно отправлена в канал для рассмотрения!** Ожидай ответа.")
+            else:
+                # Если бот не видит канал (например, его там нет)
+                await user.send("❌ Ошибка: Я не могу найти указанный канал или у меня нет туда доступа. Сообщите администратору.")
+                print(f"Ошибка: Не найден канал с ID {CHANNEL_ID}")
         except Exception as e:
-            await user.send("❌ Произошла ошибка при отправке анкеты админу. Пожалуйста, свяжитесь с руководством клана.")
-            print(f"Ошибка отправки админу: {e}")
+            await user.send("❌ Произошла ошибка при отправке анкеты.")
+            print(f"Ошибка отправки в канал: {e}")
 
     except Exception as e:
         print(f"Ошибка в анкете для {user.name}: {e}")
@@ -104,7 +126,7 @@ async def ask_questions(user: discord.User):
 async def on_ready():
     print('='*40)
     print(f'✅ Бот запущен! Имя: {bot.user.name}')
-    print(f'📬 Анкеты будут отправляться админу с ID: {ADMIN_ID}')
+    print(f'📬 Анкеты будут отправляться в канал с ID: {CHANNEL_ID}')
     print('='*40)
 
 @bot.event
