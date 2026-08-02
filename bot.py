@@ -161,7 +161,7 @@ async def start_dm_application(user: discord.User):
             else:
                 await user.send("❌ Ошибка: канал не найден.")
         except Exception as e:
-            await user.send("❌ Произошла ошибка при отправке анкеты.")
+            await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
             print(f"Ошибка: {e}")
 
     except Exception as e:
