@@ -9,7 +9,7 @@ import asyncio
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
 ADMIN_ID = 1459971163013910641  # Ваш ID (оставил на всякий случай)
-CHANNEL_ID = 1526651138378567842  # 🆕 ID канала, куда отправлять анкеты
+CHANNEL_ID = 1533430617524539545  # 🆕 ID канала, куда отправлять анкеты
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
