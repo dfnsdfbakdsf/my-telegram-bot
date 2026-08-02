@@ -8,7 +8,7 @@ import datetime
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
 # 👇 ВСТАВЬТЕ СВОЙ ЦИФРОВОЙ ID (включите режим разработчика в Discord -> ПКМ по себе -> Копировать ID)
-ADMIN_ID = 1459971163013910641 # ЗАМЕНИТЕ ЭТО ЧИСЛО НА ВАШ ID
+ADMIN_ID = 1459971163013910641  # ЗАМЕНИТЕ ЭТО ЧИСЛО НА ВАШ ID
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
@@ -31,6 +31,7 @@ class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft
     server_population = TextInput(label="Сколько всего человек играет на сервере?", placeholder="Например: 50-100", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Создаем красивую анкету
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
             description=f"От: {interaction.user.mention} (ID: {interaction.user.id})",
@@ -48,15 +49,18 @@ class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft
         embed.add_field(name="👥 Онлайн сервера", value=self.server_population.value, inline=False)
 
         try:
+            # Отправка анкеты АДМИНУ В ЛС
             admin_user = await bot.fetch_user(ADMIN_ID)
             await admin_user.send(embed=embed)
-            await interaction.response.send_message("✅ **Ваша анкета успешно отправлена администрации!** Ожидайте ответа.", ephemeral=True)
+            
+            # Уведомление пользователю в чат (видит только он)
+            await interaction.response.send_message("✅ **Ваша анкета успешно отправлена администрации клана!** Ожидайте ответа в личных сообщениях.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message("❌ **Ошибка!** Не удалось отправить анкету. Попробуйте позже.", ephemeral=True)
-            print(f"❗ Ошибка: {e}")
+            await interaction.response.send_message("❌ **Ошибка!** Не удалось отправить анкету администрации.", ephemeral=True)
+            print(f"❗ Ошибка отправки админу: {e}")
 
 # ==========================================
-# 2. КНОПКА (Чтобы открыть форму)
+# 2. КНОПКА БЕЗ ОШИБКИ "НЕ ОТВЕТИЛ ВОВРЕМЯ"
 # ==========================================
 class StartButtonView(View):
     def __init__(self):
@@ -64,11 +68,14 @@ class StartButtonView(View):
 
     @discord.ui.button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
     async def start_survey(self, interaction: discord.Interaction, button: Button):
-        # По нажатию на кнопку открывается модальное окно
-        await interaction.response.send_modal(ClanApplicationModal())
+        # 1. МГНОВЕННО сообщаем Discord, что мы всё получили (это убирает красную ошибку)
+        await interaction.response.defer(ephemeral=True)
+        
+        # 2. Открываем саму форму
+        await interaction.followup.send_modal(ClanApplicationModal())
 
 # ==========================================
-# 3. СОБЫТИЯ И КОМАНДЫ
+# 3. КОМАНДЫ БОТА
 # ==========================================
 @bot.event
 async def on_ready():
@@ -83,27 +90,29 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# 👇 ТЕПЕРЬ ЭТО РАБОТАЕТ ИДЕАЛЬНО
 @bot.command()
 async def anketa(ctx):
-    # Отправляем кнопку в чат, при нажатии откроется анкета
+    # Отправляем сообщение с кнопкой
     await ctx.send("👋 Нажмите на кнопку ниже, чтобы начать заполнение анкеты:", view=StartButtonView())
 
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
         title="📋 Команды для набора в клан",
+        description="Используйте `!` перед командой",
         color=discord.Color.gold()
     )
-    embed.add_field(name="!anketa", value="📝 Открыть анкету (нажмите кнопку)", inline=False)
-    embed.add_field(name="!help", value="Показать помощь", inline=False)
+    embed.add_field(name="!anketa", value="📝 Открыть анкету на вступление", inline=False)
+    embed.add_field(name="!help", value="Показать это сообщение", inline=False)
     await ctx.send(embed=embed)
 
 # ==========================================
-# ЗАПУСК
+# ЗАПУСК БОТА
 # ==========================================
 if __name__ == "__main__":
     try:
         bot.run(TOKEN)
+    except discord.LoginFailure:
+        print('❌ ОШИБКА: Неверный токен!')
     except Exception as e:
         print(f'❌ ОШИБКА ЗАПУСКА: {e}')
