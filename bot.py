@@ -3,7 +3,7 @@ from discord.ext import commands
 import sys
 
 # ВСТАВЬТЕ ТОКЕН СЮДА (Только ваш токен, без лишних кавычек)
-TOKEN = 'MTUzMzQzNzQ5MTMxMzM3NzM3MQ.GcQfqm.VkIiurMam8y6ysOIEG_Z0I-vNFB3aa5PAKLdZU'
+TOKEN = 'MTUzMzQzNzQ5MTMxMzM3NzM3MQ.Gd5KFV.iewTC6DncbfB9gD7tze7SnbB-ac6JjjCsIrYIQ'
 
 if TOKEN == 'ВАШ_ТОКЕН_БОТА_СЮДА':
     print('❌ ОШИБКА: Вы не вставили токен!')
