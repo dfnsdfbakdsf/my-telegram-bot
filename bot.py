@@ -5,82 +5,39 @@ import os
 import sys
 import datetime
 
-# 🛡️ Токен из переменной окружения
+# 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
+# 👇 ВСТАВЬТЕ СВОЙ ЦИФРОВОЙ ID (включите режим разработчика в Discord -> ПКМ по себе -> Копировать ID)
+ADMIN_ID = 1459971163013910641  # ЗАМЕНИТЕ ЭТО ЧИСЛО НА ВАШ ID
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
     sys.exit()
 
-# Настройки бота
 intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # ==========================================
-# 1. СОЗДАЕМ МОДАЛЬНОЕ ОКНО (ФОРМА АНКЕТЫ)
+# 1. ФОРМА АНКЕТЫ
 # ==========================================
-class ClanApplicationModal(Modal, title="📋 Анкета на вступление в клан"):
+class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft"):
     
-    # Поля для заполнения (как вопросы в Google Форме)
-    name = TextInput(
-        label="Как вас зовут? (реальное имя)",
-        placeholder="Введите ваше имя...",
-        required=True,
-        style=discord.TextStyle.short
-    )
-    
-    nickname = TextInput(
-        label="Ваш никнейм на сервере Minecraft",
-        placeholder="Например: _Vortex_",
-        required=True,
-        style=discord.TextStyle.short
-    )
-    
-    donate = TextInput(
-        label="Какой у вас донат?",
-        placeholder="VIP, Premium, Без доната, и т.д.",
-        required=True,
-        style=discord.TextStyle.short
-    )
-    
-    playtime = TextInput(
-        label="Сколько часов в день играете?",
-        placeholder="Например: 3-4 часа",
-        required=True,
-        style=discord.TextStyle.short
-    )
+    name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Ваше имя...", required=True)
+    nickname = TextInput(label="Ваш никнейм на сервере Minecraft", placeholder="Например: _Vortex_", required=True)
+    donate = TextInput(label="Какой у вас донат?", placeholder="VIP, Premium, Без доната...", required=True)
+    playtime = TextInput(label="Сколько часов в день играете?", placeholder="Например: 3-4 часа", required=True)
+    pvp = TextInput(label="Оцените свой навык PvP (от 1 до 10)", placeholder="Число от 1 до 10", required=True)
+    pve = TextInput(label="Оцените свой навык PvE (от 1 до 10)", placeholder="Число от 1 до 10", required=True)
+    server_population = TextInput(label="Сколько всего человек играет на сервере?", placeholder="Например: 50-100", required=True)
 
-    pvp = TextInput(
-        label="Оцените свой навык PvP (от 1 до 10)",
-        placeholder="Введите число от 1 до 10",
-        required=True,
-        style=discord.TextStyle.short
-    )
-
-    pve = TextInput(
-        label="Оцените свой навык PvE (от 1 до 10)",
-        placeholder="Введите число от 1 до 10",
-        required=True,
-        style=discord.TextStyle.short
-    )
-
-    server_population = TextInput(
-        label="Сколько всего человек играет на сервере?",
-        placeholder="Например: 50-100",
-        required=True,
-        style=discord.TextStyle.short
-    )
-
-    # Что происходит, когда пользователь нажал "Отправить"
     async def on_submit(self, interaction: discord.Interaction):
-        # Собираем всё в одну красивую анкету
+        # Создаем красивую анкету
         embed = discord.Embed(
-            title="📥 Новая анкета на вступление в клан!",
+            title="📥 Новая анкета на вступление!",
             description=f"От: {interaction.user.mention}",
             color=discord.Color.green(),
             timestamp=datetime.datetime.now()
         )
-        
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
         
         embed.add_field(name="👤 Реальное имя", value=self.name.value, inline=False)
@@ -90,28 +47,34 @@ class ClanApplicationModal(Modal, title="📋 Анкета на вступлен
         embed.add_field(name="⚔️ PvP (1-10)", value=self.pvp.value, inline=True)
         embed.add_field(name="👹 PvE (1-10)", value=self.pve.value, inline=True)
         embed.add_field(name="👥 Онлайн сервера", value=self.server_population.value, inline=False)
-        
-        embed.set_footer(text=f"ID заявителя: {interaction.user.id}")
+        embed.set_footer(text=f"ID: {interaction.user.id}")
 
-        # Отправляем анкету прямо в этот же чат (чтобы все видели)
-        await interaction.response.send_message(embed=embed)
-        
-        # (Опционально) Если хотите, чтобы анкета дублировалась вам в ЛС, раскомментируйте:
-        # await interaction.user.send("✅ Ваша анкета отправлена! Ожидайте ответа от руководства клана.")
-
-    # Если пользователь нажал "Отмена" или закрыл окно
-    async def on_error(self, interaction: discord.Interaction, error: Exception):
-        await interaction.response.send_message("❌ Произошла ошибка при отправке анкеты. Попробуйте снова.", ephemeral=True)
+        # 1. Отправляем анкету в ЛС админу (вам)
+        try:
+            admin_user = await bot.fetch_user(ADMIN_ID)
+            await admin_user.send(embed=embed)
+            
+            # 2. Сообщаем пользователю, что всё ок
+            await interaction.response.send_message(
+                "✅ **Ваша анкета успешно отправлена администрации клана!** Ожидайте ответа в личных сообщениях.", 
+                ephemeral=True
+            )
+        except Exception as e:
+            # Если не удалось отправить (например, админ заблокировал бота)
+            await interaction.response.send_message(
+                "❌ **Ошибка!** Не удалось отправить анкету администрации. Попробуйте позже или свяжитесь с руководством.", 
+                ephemeral=True
+            )
+            print(f"❗ Ошибка при отправке в ЛС админу: {e}")
 
 # ==========================================
-# 2. СОБЫТИЯ И КОМАНДЫ
+# 2. КОМАНДЫ
 # ==========================================
-
 @bot.event
 async def on_ready():
     print('='*40)
     print(f'✅ Бот запущен! Имя: {bot.user.name}')
-    print(f'🚀 Готов принимать анкеты!')
+    print(f'📬 Анкеты будут отправляться админу с ID: {ADMIN_ID}')
     print('='*40)
 
 @bot.event
@@ -120,14 +83,11 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# Команда для вызова анкеты
 @bot.command()
 async def anketa(ctx):
-    # Открываем модальное окно перед пользователем
-    await ctx.send("📝 Открываю форму для заполнения анкеты...", ephemeral=True)
+    # Открываем форму
     await ctx.interaction.response.send_modal(ClanApplicationModal())
 
-# Простая команда помощи
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
@@ -135,12 +95,12 @@ async def help(ctx):
         description="Используйте `!` перед командой",
         color=discord.Color.gold()
     )
-    embed.add_field(name="!anketa", value="📝 Открыть анкету на вступление в клан", inline=False)
-    embed.add_field(name="!help", value="Показать это сообщение", inline=False)
+    embed.add_field(name="!anketa", value="📝 Открыть анкету", inline=False)
+    embed.add_field(name="!help", value="Показать помощь", inline=False)
     await ctx.send(embed=embed)
 
 # ==========================================
-# ЗАПУСК БОТА
+# ЗАПУСК
 # ==========================================
 if __name__ == "__main__":
     try:
