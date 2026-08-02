@@ -62,7 +62,7 @@ blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО
+# 1. МОДАЛЬНОЕ ОКНО (Сама анкета)
 # ==========================================
 class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
@@ -152,28 +152,20 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ (БЕЗ КНОПОК)
+# 3. КОМАНДЫ (МГНОВЕННОЕ ОТКРЫТИЕ)
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен. Кнопки отключены навсегда!')
+    print('✅ Бот запущен! Команда работает идеально.')
 
 @bot.command()
 async def start(ctx):
-    # Сначала проверяем ЧС
+    # Проверка черного списка
     if ctx.author.id in blacklisted_users:
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
 
-    # Отправляем красивое приветствие, но НЕ кнопку.
-    embed = discord.Embed(
-        title="🎮 Добро пожаловать в клан!",
-        description="Сейчас откроется анкета. Пожалуйста, заполните все поля.",
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-    
-    # Мгновенно открываем модальное окно
+    # 🚀 МГНОВЕННО ОТКРЫВАЕМ ОКНО, БЕЗ ЛИШНИХ СООБЩЕНИЙ
     await ctx.interaction.response.send_modal(ApplicationModal())
 
 @bot.command()
