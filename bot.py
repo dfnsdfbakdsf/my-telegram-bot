@@ -128,6 +128,9 @@ async def ask_questions(user: discord.User):
         embed.add_field(name="👹 PvE (1-10)", value=answers["pve"], inline=True)
         embed.add_field(name="👥 Сколько играют на сервере", value=answers["server_population"], inline=False)
 
+        # 🛠️ ИСПРАВЛЕНИЕ ОШИБКИ: Сначала отправляем сообщение пользователю
+        await user.send("⏳ Ваша анкета обрабатывается и отправляется руководству...")
+        
         try:
             target_channel = bot.get_channel(CHANNEL_ID)
             if target_channel:
@@ -137,6 +140,7 @@ async def ask_questions(user: discord.User):
                 stats["total_applications"] += 1
                 save_stats(stats)
                 
+                # Теперь отправляем финальное сообщение об успехе
                 await user.send("✅ **Готово! Твоя анкета успешно отправлена!** Ожидай ответа от руководства.")
             else:
                 await user.send("❌ Ошибка: Я не могу найти указанный канал. Сообщите администратору.")
@@ -148,7 +152,7 @@ async def ask_questions(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА (БЕЗ ПРОВЕРКИ ПРАВ)
+# 3. ОБРАБОТКА ОТВЕТОВ ОТ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -160,13 +164,10 @@ async def on_message(message):
     if message.channel.id != CHANNEL_ID:
         return
 
-    # Если бота не упомянули - игнорируем
     if bot.user not in message.mentions:
         return
 
-    # ⚠️ ТУТ УБРАНА ПРОВЕРКА НА АДМИНОВ. ТЕПЕРЬ ОТВЕЧАТЬ МОЖЕТ ЛЮБОЙ
-    # if message.author.id not in admin_ids: ... (Этот блок удален)
-
+    # Если бота упомянули
     admin_reply_text = message.content
     clean_text = re.sub(rf'<@!?{bot.user.id}>', '', admin_reply_text).strip()
 
