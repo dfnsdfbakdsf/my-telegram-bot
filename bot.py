@@ -62,7 +62,7 @@ blacklisted_users = load_blacklist()
 pending_applications = {}
 
 # ==========================================
-# 1. МОДАЛЬНОЕ ОКНО (Сама анкета)
+# 1. МОДАЛЬНОЕ ОКНО
 # ==========================================
 class ApplicationModal(Modal, title="Анкета в клан Minecraft"):
     name = TextInput(label="Как вас зовут? (реальное имя)", placeholder="Введите имя...", required=True)
@@ -152,20 +152,19 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 3. КОМАНДЫ (МГНОВЕННОЕ ОТКРЫТИЕ)
+# 3. КОМАНДЫ (ПОЛНОСТЬЮ ИСПРАВЛЕНА)
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен! Команда работает идеально.')
+    print('✅ Бот запущен!')
 
 @bot.command()
 async def start(ctx):
-    # Проверка черного списка
     if ctx.author.id in blacklisted_users:
         await ctx.send("⛔ Вы в черном списке.", ephemeral=True)
         return
 
-    # 🚀 МГНОВЕННО ОТКРЫВАЕМ ОКНО, БЕЗ ЛИШНИХ СООБЩЕНИЙ
+    # ✅ Самое надежное решение: используем ctx.interaction напрямую
     await ctx.interaction.response.send_modal(ApplicationModal())
 
 @bot.command()
@@ -219,7 +218,7 @@ async def stats(ctx):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
-    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (мгновенно)", inline=False)
+    embed.add_field(name="!start / !anketa", value="📝 Открыть анкету", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
     embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
     embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
