@@ -1,7 +1,7 @@
 import discord
 
 # ТОКЕН КОТОРЫЙ РАБОТАЕТ (из вашей проверки)
-TOKEN = 'MTUzMzQ0Mzc3NzY5ODcyOTk5NQ.GjTrJ-.XK5zgrlqpdU-M8k_CgJ3Bmg3W2jhV8w8FSK_HA'
+TOKEN = 'MTUzMzQ0Mzc3NzY5ODcyOTk5NQ.GY7s4c.3XtsP0b2_SAAYgTMgf3s054ZfhVxKeoaamXFQg'
 
 print('🚀 ЗАПУСК БОТА...')
 
