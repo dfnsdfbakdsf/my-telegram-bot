@@ -55,7 +55,7 @@ stats = load_stats()
 pending_applications = {} # ID сообщения анкеты -> ID игрока
 
 # ==========================================
-# 1. КНОПКА ДЛЯ СТАРТА
+# 1. КНОПКА ДЛЯ СТАРТА АНКЕТЫ
 # ==========================================
 class StartButtonView(View):
     def __init__(self):
@@ -114,7 +114,7 @@ async def ask_questions(user: discord.User):
                     break 
 
                 except asyncio.TimeoutError:
-                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa`.")
+                    await user.send("⏳ Время вышло! Чтобы начать заново, напишите в чат `!anketa` или `!start`.")
                     return
 
         # ==========================================
@@ -144,7 +144,7 @@ async def ask_questions(user: discord.User):
                 # Сохраняем ID анкеты в память для ответов
                 pending_applications[sent_message.id] = user.id
                 
-                # 📊 УВЕЛИЧИВАЕМ СЧЕТЧИК СТАТИСТИКИ И СОХРАНЯЕМ
+                # 📊 УВЕЛИЧИВАЕМ СЧЕТЧИК СТАТИСТИКИ
                 stats["total_applications"] += 1
                 save_stats(stats)
                 
@@ -159,7 +159,7 @@ async def ask_questions(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 4. ПЕРЕХВАТ ОТВЕТОВ ОТ АДМИНА (С ПРОВЕРКОЙ ПРАВ)
+# 4. ПЕРЕХВАТ ОТВЕТОВ ОТ АДМИНА
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -168,19 +168,15 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-    # Проверяем, что сообщение в нужном канале
     if message.channel.id != CHANNEL_ID:
         return
 
-    # Проверяем, что бот упомянут
     if bot.user in message.mentions:
         
-        # 🔒 ПРОВЕРКА: Имеет ли этот пользователь право отвечать?
         if message.author.id not in admin_ids:
-            await message.reply("⛔ **Доступ запрещен!** Только добавленные администраторы могут отвечать на анкеты через меня.", mention_author=False)
+            await message.reply("⛔ **Доступ запрещен!** Только добавленные администраторы могут отвечать на анкеты.", mention_author=False)
             return
 
-        # Обработка ответа
         admin_reply_text = message.content
         clean_text = re.sub(rf'<@!?{bot.user.id}>', '', admin_reply_text).strip()
 
@@ -190,7 +186,6 @@ async def on_message(message):
         target_user_id = None
         target_msg_id = None
 
-        # Ищем анкету (последнее сообщение бота с анкетой перед ответом)
         async for msg in message.channel.history(limit=20):
             if msg.author == bot.user and msg.embeds:
                 if msg.id in pending_applications:
@@ -212,20 +207,35 @@ async def on_message(message):
             await message.reply("⚠️ Я не нашёл анкету перед этим сообщением. Убедитесь, что вы ответили под анкетой.", mention_author=False)
 
 # ==========================================
-# 5. КОМАНДЫ БОТА
+# 5. КОМАНДЫ БОТА (Здесь изменения)
 # ==========================================
 @bot.event
 async def on_ready():
     print('='*40)
     print(f'✅ Бот запущен! Имя: {bot.user.name}')
     print(f'📬 Всего подано заявок: {stats["total_applications"]}')
-    print(f'👑 Админов в списке: {len(admin_ids)}')
     print('='*40)
 
-# Команда добавления админа (только для владельца бота)
+# ✅ Добавили команду !start (она полностью дублирует !anketa, но с приветствием)
+@bot.command()
+async def start(ctx):
+    embed = discord.Embed(
+        title="🎮 Добро пожаловать в клан!",
+        description="Мы рады видеть тебя здесь! Чтобы вступить в наш клан Minecraft, тебе нужно заполнить анкету.\n\nНажми на кнопку ниже, чтобы начать!",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Анкета займёт всего пару минут")
+    await ctx.send(embed=embed, view=StartButtonView())
+
+# Старая команда тоже работает
+@bot.command()
+async def anketa(ctx):
+    await ctx.send("👋 Нажмите на кнопку ниже, чтобы начать анкету:", view=StartButtonView())
+
+# Добавление админа
 @bot.command()
 async def addadmin(ctx, member: discord.Member):
-    if ctx.author.id != 1459971163013910641: # Только ВЫ можете добавлять админов
+    if ctx.author.id != 1459971163013910641:
         await ctx.send("⛔ Только владелец бота может добавлять администраторов.")
         return
 
@@ -236,7 +246,7 @@ async def addadmin(ctx, member: discord.Member):
         save_admins(admin_ids)
         await ctx.send(f"✅ {member.mention} теперь может отвечать на анкеты через бота!")
 
-# Команда удаления админа
+# Удаление админа
 @bot.command()
 async def removeadmin(ctx, member: discord.Member):
     if ctx.author.id != 1459971163013910641:
@@ -250,7 +260,7 @@ async def removeadmin(ctx, member: discord.Member):
     else:
         await ctx.send(f"👑 {member.mention} нет в списке администраторов.")
 
-# Команда статистики
+# Статистика
 @bot.command()
 async def stats(ctx):
     embed = discord.Embed(
@@ -262,11 +272,6 @@ async def stats(ctx):
     embed.set_footer(text="Статистика обновляется в реальном времени")
     await ctx.send(embed=embed)
 
-# Анкета
-@bot.command()
-async def anketa(ctx):
-    await ctx.send("👋 Нажмите на кнопку ниже, чтобы начать анкету:", view=StartButtonView())
-
 # Помощь
 @bot.command()
 async def help(ctx):
@@ -274,10 +279,11 @@ async def help(ctx):
         title="📋 Команды бота",
         color=discord.Color.gold()
     )
+    embed.add_field(name="!start", value="🎮 Показать приветствие и начать анкету", inline=False)
     embed.add_field(name="!anketa", value="📝 Открыть анкету для вступления", inline=False)
     embed.add_field(name="!stats", value="📊 Показать статистику заявок", inline=False)
-    embed.add_field(name="!addadmin @ник", value="👑 Добавить админа (только для владельца)", inline=False)
-    embed.add_field(name="!removeadmin @ник", value="👑 Удалить админа (только для владельца)", inline=False)
+    embed.add_field(name="!addadmin @ник", value="👑 Добавить админа (для владельца)", inline=False)
+    embed.add_field(name="!removeadmin @ник", value="👑 Удалить админа (для владельца)", inline=False)
     await ctx.send(embed=embed)
 
 # ==========================================
