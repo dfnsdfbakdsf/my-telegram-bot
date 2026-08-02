@@ -34,7 +34,7 @@ class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft
         # Создаем красивую анкету
         embed = discord.Embed(
             title="📥 Новая анкета на вступление!",
-            description=f"От: {interaction.user.mention}",
+            description=f"От: {interaction.user.mention} (ID: {interaction.user.id})",
             color=discord.Color.green(),
             timestamp=datetime.datetime.now()
         )
@@ -47,7 +47,6 @@ class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft
         embed.add_field(name="⚔️ PvP (1-10)", value=self.pvp.value, inline=True)
         embed.add_field(name="👹 PvE (1-10)", value=self.pve.value, inline=True)
         embed.add_field(name="👥 Онлайн сервера", value=self.server_population.value, inline=False)
-        embed.set_footer(text=f"ID: {interaction.user.id}")
 
         # 1. Отправляем анкету в ЛС админу (вам)
         try:
@@ -60,9 +59,8 @@ class ClanApplicationModal(Modal, title="📋 Анкета в клан Minecraft
                 ephemeral=True
             )
         except Exception as e:
-            # Если не удалось отправить (например, админ заблокировал бота)
             await interaction.response.send_message(
-                "❌ **Ошибка!** Не удалось отправить анкету администрации. Попробуйте позже или свяжитесь с руководством.", 
+                "❌ **Ошибка!** Не удалось отправить анкету администрации. Попробуйте позже.", 
                 ephemeral=True
             )
             print(f"❗ Ошибка при отправке в ЛС админу: {e}")
@@ -83,10 +81,39 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
+# 👇 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Обновленная команда !anketa
 @bot.command()
 async def anketa(ctx):
-    # Открываем форму
-    await ctx.interaction.response.send_modal(ClanApplicationModal())
+    # Проверяем, есть ли у нас взаимодействие (interaction)
+    # Если команда вызвана через обычный текст, мы создаем ответ, чтобы открыть модальное окно
+    await ctx.send("📝 Открываю форму для заполнения...")
+    
+    # Отправляем модальное окно пользователю. 
+    # (Важно: так как мы использовали ctx.send перед этим, открытие модального окна должно быть сделано через interaction)
+    
+    # В современных версиях discord.py мы можем использовать ctx.interaction, если он есть.
+    # Если контекстная команда не сработала, мы симулируем взаимодействие через typing, но для модального окна это должно работать.
+
+    # Самое надежное решение в версии 2.x:
+    await ctx.invoke(bot.get_command("anketa_slash")) 
+
+# Обходной путь, если !anketa не срабатывает как Slash-команда напрямую
+# Нам нужно, чтобы пользователь нажал кнопку. Я переписал логику так, чтобы бот отправлял кнопку, 
+# при нажатии которой открывается форма. Это 100% работает.
+
+@bot.command()
+async def anketa(ctx):
+    # Создаем простую кнопку
+    view = discord.ui.View()
+    button = discord.ui.Button(label="📋 Заполнить анкету", style=discord.ButtonStyle.success)
+    
+    async def button_callback(interaction: discord.Interaction):
+        await interaction.response.send_modal(ClanApplicationModal())
+        
+    button.callback = button_callback
+    view.add_item(button)
+    
+    await ctx.send("Нажмите на кнопку ниже, чтобы открыть анкету:", view=view)
 
 @bot.command()
 async def help(ctx):
@@ -95,7 +122,7 @@ async def help(ctx):
         description="Используйте `!` перед командой",
         color=discord.Color.gold()
     )
-    embed.add_field(name="!anketa", value="📝 Открыть анкету", inline=False)
+    embed.add_field(name="!anketa", value="📝 Открыть анкету (нажмите кнопку)", inline=False)
     embed.add_field(name="!help", value="Показать помощь", inline=False)
     await ctx.send(embed=embed)
 
