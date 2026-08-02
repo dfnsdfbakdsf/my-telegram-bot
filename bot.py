@@ -61,7 +61,7 @@ admin_ids = load_admins()
 stats = load_stats()
 blacklisted_users = load_blacklist()
 pending_applications = {}
-pending_confirmations = {} # Хранит подтверждения (msg_id -> [user_id, text])
+pending_confirmations = {}
 
 # ==========================================
 # 1. КНОПКА ДЛЯ ОТКРЫТИЯ АНКЕТЫ
@@ -166,7 +166,7 @@ async def start_dm_application(user: discord.User):
         print(f"Ошибка в анкете для {user.name}: {e}")
 
 # ==========================================
-# 3. ОТВЕТЫ АДМИНА (С ДВУХЭТАПНОЙ ПРОВЕРКОЙ)
+# 3. ОТВЕТЫ АДМИНА (ДВУХЭТАПНАЯ ПРОВЕРКА)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -174,7 +174,7 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-    # ✅ Обработка подтверждения (пункт 14)
+    # 1. Обработка подтверждения
     if message.reference and message.reference.message_id in pending_confirmations:
         if message.content.strip().lower() == "да":
             data = pending_confirmations.pop(message.reference.message_id, None)
@@ -191,7 +191,7 @@ async def on_message(message):
             await message.reply("❌ Подтверждение не получено. Отправка отменена. Чтобы подтвердить, напишите просто **Да**.")
             return
 
-    # Обработка команд и анкет
+    # 2. Обработка упоминаний бота в канале анкет
     if message.channel.id != CHANNEL_ID:
         return
     if bot.user not in message.mentions:
@@ -216,18 +216,16 @@ async def on_message(message):
             del pending_applications[target_msg_id]
             return
         
-        # 🛡️ Запрашиваем подтверждение
         confirm_msg = await message.reply(
             f"🛡️ **Подтверждение отправки**\nВы собираетесь отправить игроку:\n```{clean_text}```\n\nНапишите **Да** в ответ на это сообщение, чтобы подтвердить отправку.",
             mention_author=False
         )
-        # Сохраняем в ожидание подтверждения
         pending_confirmations[confirm_msg.id] = [target_user_id, clean_text]
     else:
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 4. КОМАНДЫ БОТА
+# 4. КОМАНДЫ БОТА (ИСПРАВЛЕНА ОШИБКА)
 # ==========================================
 @bot.event
 async def on_ready():
