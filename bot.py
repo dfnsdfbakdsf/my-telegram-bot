@@ -17,6 +17,7 @@ if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
     sys.exit()
 
+# 👇 ОЧЕНЬ ВАЖНАЯ СТРОКА! ВОЗВРАЩАЕМ ПРАВИЛЬНЫЕ РАЗРЕШЕНИЯ.
 intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
@@ -58,7 +59,7 @@ def save_blacklist(blacklist_list):
         json.dump(blacklist_list, f)
 
 admin_ids = load_admins()
-stats_data = load_stats() # 🛡️ ПЕРЕИМЕНОВАНО, ЧТОБЫ НЕ БЫЛО КОНФЛИКТА
+stats_data = load_stats() 
 blacklisted_users = load_blacklist()
 pending_applications = {}
 pending_confirmations = {}
@@ -174,7 +175,6 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-    # 1. Обработка подтверждения
     if message.reference and message.reference.message_id in pending_confirmations:
         if message.content.strip().lower() == "да":
             data = pending_confirmations.pop(message.reference.message_id, None)
@@ -191,7 +191,6 @@ async def on_message(message):
             await message.reply("❌ Подтверждение не получено. Отправка отменена. Чтобы подтвердить, напишите просто **Да**.")
             return
 
-    # 2. Обработка упоминаний бота в канале анкет
     if message.channel.id != CHANNEL_ID:
         return
     if bot.user not in message.mentions:
