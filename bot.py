@@ -11,7 +11,7 @@ import asyncio
 
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = 1533430617524539545
+CHANNEL_ID = 1533477270600028230
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
