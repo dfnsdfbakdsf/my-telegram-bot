@@ -11,13 +11,12 @@ import asyncio
 
 # 🛡️ Токен и настройки
 TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = 1533477270600028230
+CHANNEL_ID = 1533430617524539545
 
 if TOKEN is None:
     print('❌ ОШИБКА: Не найден токен (переменная DISCORD_TOKEN)')
     sys.exit()
 
-# 👇 ОЧЕНЬ ВАЖНАЯ СТРОКА! ВОЗВРАЩАЕМ ПРАВИЛЬНЫЕ РАЗРЕШЕНИЯ.
 intents = discord.Intents().all()
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
@@ -224,11 +223,11 @@ async def on_message(message):
         await message.reply("⚠️ Не найдена анкета перед этим сообщением.", mention_author=False)
 
 # ==========================================
-# 4. КОМАНДЫ БОТА
+# 4. КОМАНДЫ БОТА (ОБНОВЛЕНА СИСТЕМА АДМИНОВ)
 # ==========================================
 @bot.event
 async def on_ready():
-    print('✅ Бот запущен! Статистика исправлена.')
+    print('✅ Бот запущен! Теперь можно добавлять админов по ID.')
 
 @bot.command()
 async def start(ctx):
@@ -260,10 +259,41 @@ async def view(ctx, member: discord.Member):
                 del pending_applications[msg_id]
     await ctx.send("❌ Анкета не найдена или устарела.")
 
+# ✅ НОВАЯ КОМАНДА: Добавление админа по ID (вместо упоминания)
+@bot.command()
+async def addadminid(ctx, user_id: int):
+    if ctx.author.id != 1459971163013910641:
+        await ctx.send("⛔ Только владелец может добавлять новых админов.")
+        return
+
+    if user_id in admin_ids:
+        await ctx.send(f"👑 Этот ID (`{user_id}`) уже есть в списке администраторов.")
+        return
+    
+    admin_ids.append(user_id)
+    save_admins(admin_ids)
+    await ctx.send(f"✅ Пользователь с ID `{user_id}` теперь может использовать команды бота!")
+
+# ✅ НОВАЯ КОМАНДА: Удаление админа по ID
+@bot.command()
+async def removeadminid(ctx, user_id: int):
+    if ctx.author.id != 1459971163013910641:
+        await ctx.send("⛔ Только владелец может удалять админов.")
+        return
+
+    if user_id not in admin_ids:
+        await ctx.send(f"❌ ID `{user_id}` нет в списке администраторов.")
+        return
+    
+    admin_ids.remove(user_id)
+    save_admins(admin_ids)
+    await ctx.send(f"✅ Пользователь с ID `{user_id}` больше не может использовать команды бота.")
+
+# Обновленная команда Blacklist (теперь проверяет по админам)
 @bot.command()
 async def blacklist(ctx, member: discord.Member):
-    if ctx.author.id != 1459971163013910641:
-        await ctx.send("⛔ Только владелец.", ephemeral=True)
+    if ctx.author.id != 1459971163013910641 and ctx.author.id not in admin_ids:
+        await ctx.send("⛔ У вас нет прав использовать эту команду.")
         return
     if member.id in blacklisted_users:
         await ctx.send("⛔ Уже в ЧС.")
@@ -272,10 +302,11 @@ async def blacklist(ctx, member: discord.Member):
     save_blacklist(blacklisted_users)
     await ctx.send(f"✅ {member.mention} в ЧС.")
 
+# Обновленная команда Unblacklist (теперь проверяет по админам)
 @bot.command()
 async def unblacklist(ctx, member: discord.Member):
-    if ctx.author.id != 1459971163013910641:
-        await ctx.send("⛔ Только владелец.", ephemeral=True)
+    if ctx.author.id != 1459971163013910641 and ctx.author.id not in admin_ids:
+        await ctx.send("⛔ У вас нет прав использовать эту команду.")
         return
     if member.id not in blacklisted_users:
         await ctx.send("✅ Не в ЧС.")
@@ -301,8 +332,10 @@ async def help(ctx):
     embed = discord.Embed(title="📋 Команды", color=discord.Color.gold())
     embed.add_field(name="!start / !anketa", value="📝 Открыть анкету (с кнопкой)", inline=False)
     embed.add_field(name="!view @Ник", value="📄 Показать анкету", inline=False)
-    embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (владелец)", inline=False)
-    embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (владелец)", inline=False)
+    embed.add_field(name="!blacklist @Ник", value="🚫 В ЧС (для админов)", inline=False)
+    embed.add_field(name="!unblacklist @Ник", value="✅ Из ЧС (для админов)", inline=False)
+    embed.add_field(name="!addadminid [ID]", value="👑 Добавить админа по ID (только владелец)", inline=False)
+    embed.add_field(name="!removeadminid [ID]", value="👑 Удалить админа по ID (только владелец)", inline=False)
     embed.add_field(name="!stats", value="📊 Статистика", inline=False)
     await ctx.send(embed=embed)
 
