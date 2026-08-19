@@ -4,13 +4,14 @@ import logging
 import subprocess
 import shutil
 import json
+import time
 from io import BytesIO
 from difflib import SequenceMatcher
 
 import telebot
 from telebot import types
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import cv2
 import numpy as np
 import requests
@@ -18,13 +19,12 @@ from googlesearch import search
 from fuzzywuzzy import fuzz
 
 # ==================== НАСТРОЙКИ TESSERACT ====================
-# Ищем Tesseract в системе (через shutil)
+# Ищем Tesseract в системе
 tesseract_path = shutil.which('tesseract')
 if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
     print(f"✅ Tesseract найден по пути: {tesseract_path}")
 else:
-    # Пробуем стандартные пути (на случай, если shutil не сработал)
     possible_paths = ['/usr/bin/tesseract', '/usr/local/bin/tesseract', '/bin/tesseract']
     for path in possible_paths:
         if os.path.exists(path):
@@ -32,10 +32,9 @@ else:
             print(f"✅ Tesseract найден по пути: {path}")
             break
     else:
-        print("❌ Tesseract НЕ НАЙДЕН! Убедитесь, что он установлен.")
-        # Можно выйти или продолжить, но OCR не будет работать
+        print("❌ Tesseract НЕ НАЙДЕН!")
 
-# Проверяем, что Tesseract работает
+# Проверяем работу Tesseract
 try:
     subprocess.run([pytesseract.pytesseract.tesseract_cmd, '--version'], capture_output=True, check=True)
     print("✅ Tesseract работает")
@@ -51,8 +50,9 @@ bot = telebot.TeleBot(TOKEN)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# ==================== БАЗА ЗНАНИЙ (краткая версия) ====================
+# ==================== БАЗА ЗНАНИЙ ====================
 knowledge_base = {
+    # Математика
     "формулы сокращенного умножения": "(a+b)² = a² + 2ab + b²; (a-b)² = a² - 2ab + b²; a² - b² = (a-b)(a+b)",
     "квадрат суммы": "(a+b)² = a² + 2ab + b²",
     "квадрат разности": "(a-b)² = a² - 2ab + b²",
@@ -60,6 +60,8 @@ knowledge_base = {
     "линейное уравнение": "Уравнение вида ax + b = 0, где a ≠ 0. Решение: x = -b/a",
     "сумма углов треугольника": "180°",
     "свойство смежных углов": "Сумма смежных углов равна 180°",
+    
+    # Физика
     "скорость": "v = s/t",
     "плотность": "ρ = m/V",
     "сила тяжести": "F = mg",
@@ -67,19 +69,48 @@ knowledge_base = {
     "архимедова сила": "F = ρgV",
     "работа": "A = Fs",
     "мощность": "N = A/t",
+    "работа единица измерения": "Джоуль (Дж)",
+    "вес тела единица измерения": "Ньютон (Н)",
+    "путь единица измерения": "Метр (м)",
+    "сила единица измерения": "Ньютон (Н)",
+    "масса единица измерения": "Килограмм (кг)",
+    "давление единица измерения": "Паскаль (Па)",
+    "плотность единица измерения": "кг/м³",
+    "энергия единица измерения": "Джоуль (Дж)",
+    "мощность единица измерения": "Ватт (Вт)",
+    "время единица измерения": "Секунда (с)",
+    "температура единица измерения": "Кельвин (К)",
+    
+    # Химия
     "атом": "Мельчайшая частица химического элемента",
     "молекула": "Мельчайшая частица вещества",
     "валентность": "Способность атомов присоединять другие атомы",
+    "оксиды": "Соединения элементов с кислородом",
+    "кислоты": "Вещества, содержащие водород и кислотный остаток",
+    
+    # Биология
     "фотосинтез": "Образование органических веществ на свету",
     "клетка": "Элементарная единица живого",
     "царства живой природы": "Бактерии, Грибы, Растения, Животные",
+    
+    # География
     "материки": "Евразия, Африка, Северная Америка, Южная Америка, Антарктида, Австралия",
     "океаны": "Тихий, Атлантический, Индийский, Северный Ледовитый, Южный",
+    
+    # История
     "крещение руси": "988 год",
     "куликовская битва": "1380 год",
+    
+    # Обществознание
     "конституция": "Основной закон",
+    "права ребенка": "Права до 18 лет",
+    
+    # Английский
     "present simple": "Действие происходит регулярно",
     "past simple": "Действие произошло в прошлом",
+    "irregular verbs": "Неправильные глаголы",
+    
+    # 8 класс
     "теорема пифагора": "c² = a² + b²",
     "площадь треугольника": "S = ½ · a · h",
     "количество теплоты": "Q = cmΔt",
@@ -91,6 +122,7 @@ knowledge_base = {
 phrasal_verbs = {
     "fall out with": "поссориться с кем-то",
     "fall out": "поссориться, выпасть",
+    "fall behind": "отставать",
     "get along with": "ладить с кем-то",
     "get on with": "ладить, продолжать",
     "get over": "оправиться от, пережить",
@@ -98,6 +130,7 @@ phrasal_verbs = {
     "take up": "заниматься (хобби), начинать",
     "look for": "искать",
     "look after": "заботиться, присматривать",
+    "look forward to": "ждать с нетерпением",
     "put on": "надевать, включать (свет)",
     "put off": "откладывать, отвлекать",
     "turn on": "включать",
@@ -126,7 +159,7 @@ class MESHTestsDatabase:
         self._init_tests()
 
     def _init_tests(self):
-        # Физика 7 класс: Механическая работа
+        # Физика 7: Механическая работа
         self.tests["phys_7_001"] = {
             "id": "phys_7_001",
             "subject": "Физика",
@@ -169,11 +202,51 @@ class MESHTestsDatabase:
                     "options": ["неравны по знаку", "равны по знаку", "противоположны"]
                 }
             ],
-            "full_text": """Прочитайте текст и вставьте пропущенные слова/словосочетания...
-Два мальчика, соревнуясь в перетягивании каната, тянут его в разные стороны. Один из них, двигаясь равномерно, перетянул канат на себя. Если сравнивать механические работы сил, приложенных к канату, то несмотря на то, что один из мальчиков перетянул его, работы сил, приложенных к канату, равны по модулю. Силы, приложенные к канату, равны. У одного мальчика направление силы, приложенной к канату, совпадает с направлением его перемещения, а у другого – противоположно. Поскольку перемещения, на которых действуют силы, равны, то работы этих сил равны по модулю. В данном случае можно сказать, что работы, совершенные мальчиками, равны по модулю и неравны по знаку.""",
+            "full_text": "Прочитайте текст и вставьте пропущенные слова/словосочетания. Два мальчика, соревнуясь в перетягивании каната, тянут его в разные стороны. Один из них, двигаясь равномерно, перетянул канат на себя. Если сравнивать механические работы сил, приложенных к канату, то несмотря на то, что один из мальчиков перетянул его, работы сил, приложенных к канату, равны по модулю. Силы, приложенные к канату, равны. У одного мальчика направление силы, приложенной к канату, совпадает с направлением его перемещения, а у другого – противоположно. Поскольку перемещения, на которых действуют силы, равны, то работы этих сил равны по модулю. В данном случае можно сказать, что работы, совершенные мальчиками, равны по модулю и неравны по знаку.",
             "answers": {"1": "равны по модулю", "2": "равны", "3": "перемещения", "4": "равны", "5": "неравны по знаку"},
             "similarity": 90
         }
+        
+        # Физика 7: Единицы измерения (соответствие)
+        self.tests["phys_7_006"] = {
+            "id": "phys_7_006",
+            "subject": "Физика",
+            "class": "7",
+            "topic": "Единицы измерения физических величин",
+            "type": "matching",
+            "questions": [
+                {
+                    "number": 1,
+                    "type": "matching",
+                    "question": "Установите соответствие между физическими величинами и их единицами измерения.",
+                    "pairs": {
+                        "работа": "Джоуль (Дж)",
+                        "вес тела": "Ньютон (Н)",
+                        "путь": "Метр (м)",
+                        "скорость": "м/с",
+                        "масса": "кг",
+                        "сила": "Н",
+                        "давление": "Па",
+                        "плотность": "кг/м³",
+                        "энергия": "Дж",
+                        "мощность": "Вт",
+                        "время": "с",
+                        "температура": "К",
+                        "сила тока": "А",
+                        "напряжение": "В",
+                        "сопротивление": "Ом"
+                    }
+                }
+            ],
+            "full_text": "Установите соответствие между физическими величинами и их единицами измерения.\n\nработа → Джоуль (Дж)\nвес тела → Ньютон (Н)\nпуть → Метр (м)\nскорость → м/с\nмасса → кг\nсила → Н\nдавление → Па\nплотность → кг/м³",
+            "answers": {
+                "работа": "Джоуль (Дж)",
+                "вес тела": "Ньютон (Н)",
+                "путь": "Метр (м)"
+            },
+            "similarity": 95
+        }
+        
         # Английский 7: Идиомы
         self.tests["eng_7_002"] = {
             "id": "eng_7_002",
@@ -198,6 +271,7 @@ class MESHTestsDatabase:
             ],
             "similarity": 95
         }
+        
         # Русский 7: Предлоги
         self.tests["rus_7_003"] = {
             "id": "rus_7_003",
@@ -211,6 +285,31 @@ class MESHTestsDatabase:
                     "question": "Не поехали (в) виду непогоды. Как пишется предлог?",
                     "answer": "раздельно - в виду",
                     "options": ["слитно - ввиду", "раздельно - в виду", "через дефис"]
+                },
+                {
+                    "number": 2,
+                    "type": "text",
+                    "question": "(В)следствие дождей. Как пишется предлог?",
+                    "answer": "слитно - вследствие",
+                    "options": ["слитно - вследствие", "раздельно - в следствие"]
+                }
+            ],
+            "similarity": 95
+        }
+        
+        # Русский 7: Окончания
+        self.tests["rus_7_001"] = {
+            "id": "rus_7_001",
+            "subject": "Русский язык",
+            "class": "7",
+            "topic": "Правописание окончаний существительных",
+            "questions": [
+                {
+                    "number": 1,
+                    "type": "text",
+                    "question": "В каком примере на месте пропуска пишется буква 'и'?",
+                    "answer": "в течении реки",
+                    "options": ["по мере продвижения", "в виде исключения", "наподобие шара", "в течении реки"]
                 }
             ],
             "similarity": 95
@@ -222,6 +321,7 @@ class MESHTestsDatabase:
         clean_text = text.lower().strip()
         best_match = None
         best_score = 0
+        
         for test_id, test_data in self.tests.items():
             # По ID
             test_words = set(test_id.replace('_', ' ').split())
@@ -232,6 +332,7 @@ class MESHTestsDatabase:
                 if score > best_score:
                     best_score = score
                     best_match = test_data
+            
             # По вопросам
             if 'questions' in test_data:
                 for q in test_data['questions']:
@@ -241,6 +342,15 @@ class MESHTestsDatabase:
                         if ratio > best_score and ratio > 40:
                             best_score = ratio
                             best_match = test_data
+            
+            # По полному тексту
+            if 'full_text' in test_data:
+                ft = test_data['full_text'].lower()
+                ratio = fuzz.partial_ratio(clean_text, ft[:300])
+                if ratio > best_score and ratio > 30:
+                    best_score = ratio
+                    best_match = test_data
+        
         return best_match, best_score
 
 mesh_db = MESHTestsDatabase()
@@ -253,13 +363,20 @@ def preprocess_image(image_path):
         img = cv2.imread(image_path)
         if img is None:
             return image_path
+        
         # Увеличение размера
         img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        
+        # Преобразование в оттенки серого
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Адаптивный порог для лучшего распознавания текста
+        
+        # Адаптивный порог
         binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                        cv2.THRESH_BINARY, 11, 2)
+        
+        # Удаление шума
         denoised = cv2.medianBlur(binary, 3)
+        
         processed_path = image_path.replace('.jpg', '_processed.jpg')
         cv2.imwrite(processed_path, denoised)
         return processed_path
@@ -267,16 +384,28 @@ def preprocess_image(image_path):
         logger.error(f"Ошибка предобработки: {e}")
         return image_path
 
+def clean_text(text):
+    """Очистка текста от мусора"""
+    # Удаляем лишние пробелы
+    text = re.sub(r'\s+', ' ', text)
+    # Удаляем странные символы
+    text = re.sub(r'[^\w\s.,;:!?()"\'\-]', '', text)
+    return text.strip()
+
 def extract_test_questions(text):
+    """Извлечение вопросов из текста"""
     lines = text.split('\n')
     questions = []
     current_q = ""
     current_opts = []
     in_question = False
+    
     for line in lines:
         line = line.strip()
         if not line:
             continue
+        
+        # Проверка на начало вопроса
         if re.search(r'^\d+[.)]\s*', line) or re.search(r'^(Вопрос|Задание)\s*\d+', line, re.I):
             if current_q:
                 questions.append({'question': current_q, 'options': current_opts})
@@ -284,25 +413,36 @@ def extract_test_questions(text):
             current_opts = []
             in_question = True
         elif in_question:
+            # Проверка на варианты ответов
             if re.match(r'^[А-Яа-яA-Za-z]\)', line) or re.match(r'^\d+\)', line):
                 current_opts.append(line)
             else:
                 current_q += " " + line
+    
     if current_q:
         questions.append({'question': current_q, 'options': current_opts})
+    
     return questions
 
 def find_answer_in_knowledge(question):
+    """Поиск ответа в базе знаний"""
     if not question:
         return None
+    
     q = question.lower().strip()
     q = re.sub(r'[^\w\s?]', '', q)
     q = re.sub(r'\s+', ' ', q).strip()
+    
+    # Прямой поиск
     if q in knowledge_base:
         return knowledge_base[q]
+    
+    # Поиск по фразовым глаголам
     for verb, meaning in phrasal_verbs.items():
         if verb in q:
             return f"{verb} = {meaning}"
+    
+    # Нечёткий поиск
     best_match = None
     best_score = 0
     for key, value in knowledge_base.items():
@@ -310,12 +450,33 @@ def find_answer_in_knowledge(question):
         if score > best_score and score > 60:
             best_score = score
             best_match = value
+    
     return best_match
 
+def find_matching_pairs(text):
+    """Находит соответствия для задания на сопоставление"""
+    pairs = {}
+    
+    # Ищем ключевые слова для соответствий
+    match_lines = re.findall(r'([а-яА-Яa-zA-Z\s]+)\s*[→-]\s*([а-яА-Яa-zA-Z\s()]+)', text)
+    if match_lines:
+        for term, definition in match_lines:
+            term_clean = term.strip().lower()
+            def_clean = definition.strip()
+            # Проверяем в базе знаний
+            if term_clean in ['работа', 'вес тела', 'путь', 'скорость', 'масса', 'сила', 'давление', 'плотность']:
+                pairs[term_clean] = def_clean
+    
+    return pairs
+
 def find_answer_with_context(question):
+    """Комбинированный поиск ответа"""
     if not question:
         return None
+    
     q = question.lower().strip()
+    
+    # Проверка на задание с пропуском (фразовые глаголы)
     if re.search(r'___|\.\.\.|\([A-Za-z]+\)', q):
         for verb in phrasal_verbs.keys():
             if verb.replace(' ', '') in q.replace(' ', '') or verb in q:
@@ -324,18 +485,24 @@ def find_answer_with_context(question):
             return "out (fall out with = поссориться)"
         if 'get' in q and 'with' in q:
             return "along (get along with = ладить)"
+    
+    # Поиск в базе знаний
     kb_answer = find_answer_in_knowledge(question)
     if kb_answer:
         return kb_answer
+    
+    # Поиск в базе тестов МЭШ
     test_data, sim = mesh_db.find_test_by_text(question)
     if test_data and sim > 30:
         if 'questions' in test_data and test_data['questions']:
             return test_data['questions'][0].get('answer', None)
         if 'answers' in test_data:
             return list(test_data['answers'].values())[0]
+    
     return None
 
 def search_in_internet(query):
+    """Поиск в интернете (запасной вариант)"""
     try:
         results = list(search(f"{query} ответ МЭШ", num_results=2, lang='ru'))
         if results:
@@ -345,17 +512,23 @@ def search_in_internet(query):
     return None
 
 def format_full_test_answer(test_data, similarity):
+    """Форматирование полного ответа из базы тестов"""
     if not test_data:
         return None
+    
     lines = []
-    lines.append(f"🔍 {similarity:.0f}% МЭШ\n")
+    lines.append(f"🔍 {similarity:.0f}% МЭШ")
+    lines.append("")
     lines.append(f"📚 {test_data['subject']} {test_data['class']} класс")
-    lines.append(f"📖 Тема: {test_data['topic']}\n")
+    lines.append(f"📖 Тема: {test_data['topic']}")
+    lines.append("")
+    
     if 'questions' in test_data:
         for q in test_data['questions']:
             lines.append(f"Вопрос {q.get('number', '?')}: {q.get('question', '')}")
+            
             if q.get('type') == 'matching' and 'pairs' in q:
-                lines.append("Соответствия:")
+                lines.append("📋 Соответствия:")
                 for term, defin in q['pairs'].items():
                     lines.append(f"  • {term} → {defin}")
             else:
@@ -363,18 +536,53 @@ def format_full_test_answer(test_data, similarity):
                 if q.get('options'):
                     lines.append(f"📋 Варианты: {', '.join(q['options'])}")
             lines.append("")
+    
+    return '\n'.join(lines)
+
+def format_matching_answer(pairs):
+    """Форматирование ответа для задания на соответствие"""
+    if not pairs:
+        return None
+    
+    lines = []
+    lines.append("🔍 95% МЭШ")
+    lines.append("")
+    lines.append("📚 Физика 7 класс")
+    lines.append("📖 Тема: Единицы измерения физических величин")
+    lines.append("")
+    lines.append("📝 Установите соответствие между физическими величинами и их единицами измерения.")
+    lines.append("")
+    lines.append("✅ Соответствия:")
+    
+    for term, defin in pairs.items():
+        lines.append(f"  • {term} → {defin}")
+    
+    # Добавляем объяснения
+    lines.append("")
+    lines.append("📖 Объяснение:")
+    if "работа" in pairs:
+        lines.append("  • Работа (A) измеряется в Джоулях (Дж) — 1 Дж = 1 Н·м")
+    if "вес тела" in pairs:
+        lines.append("  • Вес тела (P) измеряется в Ньютонах (Н) — это сила")
+    if "путь" in pairs:
+        lines.append("  • Путь (s) измеряется в Метрах (м) — основная единица длины в СИ")
+    
     return '\n'.join(lines)
 
 def format_individual_answers(questions):
+    """Форматирование ответов по отдельным вопросам"""
     lines = []
     for idx, q in enumerate(questions, 1):
         ans = find_answer_with_context(q['question'])
         if not ans:
             ans = search_in_internet(q['question']) or "Не удалось найти ответ"
-        lines.append(f"📌 Вопрос {idx}: {q['question'][:100]}")
+        
+        lines.append(f"📌 Вопрос {idx}: {q['question'][:150]}")
         if q.get('options'):
             lines.append(f"📋 Варианты: {', '.join(q['options'])}")
-        lines.append(f"💡 Ответ: {ans}\n")
+        lines.append(f"💡 Ответ: {ans}")
+        lines.append("")
+    
     return '\n'.join(lines)
 
 # ==================== ОБРАБОТЧИКИ КОМАНД ====================
@@ -383,15 +591,39 @@ def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("📚 Предметы"), types.KeyboardButton("📊 Статистика"))
     markup.add(types.KeyboardButton("🔍 Найти тест"), types.KeyboardButton("❓ Помощь"))
-    bot.reply_to(message, "👋 Привет! Я бот для решения тестов МЭШ 7-8 классов.\n\n📸 Отправь мне фото теста, и я найду ответы!", reply_markup=markup)
+    bot.reply_to(message, 
+        "👋 Привет! Я бот для решения тестов МЭШ 7-8 классов.\n\n"
+        "📸 Отправь мне фото теста, и я найду ответы!\n"
+        "Или просто задай вопрос текстом.", 
+        reply_markup=markup)
 
 @bot.message_handler(commands=['help'])
 def send_help(message):
-    bot.reply_to(message, "📚 Команды:\n/start – начать\n/help – помощь\n/subjects – предметы\n/all_tests – список тестов\n/test_stats – статистика\n/find_test <ключ> – поиск\n/idioms – идиомы\n/emotions – эмоции\n/prepositions – предлоги\n/russian – правила")
+    bot.reply_to(message,
+        "📚 Как пользоваться:\n"
+        "1. Отправь фото теста из МЭШ\n"
+        "2. Я распознаю текст и найду ответы\n"
+        "3. Получи готовые ответы с объяснениями\n\n"
+        "🔹 Команды:\n"
+        "/start – начать\n"
+        "/help – помощь\n"
+        "/subjects – список предметов\n"
+        "/all_tests – все тесты в базе\n"
+        "/test_stats – статистика базы\n"
+        "/find_test <ключ> – поиск теста\n"
+        "/idioms – идиомы английского\n"
+        "/emotions – идиомы про эмоции\n"
+        "/prepositions – предлоги русского\n"
+        "/russian – правила русского языка")
 
 @bot.message_handler(commands=['subjects'])
 def send_subjects(message):
-    bot.reply_to(message, "📚 Математика, Физика, Химия, Биология, География, История, Литература, Обществознание, Английский язык")
+    bot.reply_to(message,
+        "📚 Предметы 7-8 класс:\n"
+        "• Математика (алгебра, геометрия)\n"
+        "• Физика\n• Химия\n• Биология\n"
+        "• География\n• История\n• Литература\n"
+        "• Обществознание\n• Английский язык")
 
 @bot.message_handler(commands=['all_tests'])
 def show_all_tests(message):
@@ -424,19 +656,48 @@ def find_test_cmd(message):
 
 @bot.message_handler(commands=['idioms'])
 def show_idioms(message):
-    bot.reply_to(message, "📚 Идиомы:\n1. cry over spilt milk – плакать над пролитым молоком\n2. bookworm – книжный червь\n3. on cloud nine – на седьмом небе\n4. raining cats and dogs – льет как из ведра\n5. heart of a lion – храбрый")
+    bot.reply_to(message,
+        "📚 Английские идиомы:\n"
+        "1. cry over spilt milk – плакать над пролитым молоком\n"
+        "2. bookworm – книжный червь\n"
+        "3. butterflies in the stomach – волнение\n"
+        "4. raining cats and dogs – льет как из ведра\n"
+        "5. on cloud nine – на седьмом небе\n"
+        "6. as busy as a bee – трудолюбивый\n"
+        "7. heart of a lion – храбрый\n"
+        "8. two left feet – неуклюжий\n"
+        "9. brain box – умный человек\n"
+        "10. born with a silver spoon – родился в рубашке")
 
 @bot.message_handler(commands=['emotions'])
 def show_emotions(message):
-    bot.reply_to(message, "😊 Идиомы эмоций:\n• on cloud nine – счастлив\n• down in the dumps – грустный\n• butterflies in the stomach – волноваться")
+    bot.reply_to(message,
+        "😊 Идиомы про эмоции:\n"
+        "• on cloud nine – очень счастлив\n"
+        "• over the moon – вне себя от счастья\n"
+        "• down in the dumps – грустный\n"
+        "• under the weather – нездоров\n"
+        "• full of beans – полон энергии\n"
+        "• walking on air – летать от счастья\n"
+        "• feeling blue – грустить\n"
+        "• butterflies in the stomach – волноваться")
 
 @bot.message_handler(commands=['prepositions'])
 def show_prepositions(message):
-    bot.reply_to(message, "📚 Предлоги: слитно – ввиду, вследствие, насчёт; раздельно – в виду, в течение, по мере")
+    bot.reply_to(message,
+        "📚 Предлоги русского языка:\n"
+        "Слитно: ввиду, вследствие, насчёт, наподобие, вроде, навстречу, наперекор\n"
+        "Раздельно: в виде, в связи, в целях, в течение, в продолжение, в заключение, по мере, в отличие, в виду\n"
+        "Важно: в течениИ реки (сущ.) – И, в течениЕ дня (предлог) – Е")
 
 @bot.message_handler(commands=['russian'])
 def show_russian(message):
-    bot.reply_to(message, "📚 Правила: в течении реки (И), в течение дня (Е), ввиду (слитно), в виду (раздельно)")
+    bot.reply_to(message,
+        "📚 Правила русского языка:\n"
+        "• Сущ. на -ИЕ в предл. падеже → -ИИ (в течении реки)\n"
+        "• Сущ. 1-го скл. в дат. падеже → -Е (по дороге)\n"
+        "• Производные предлоги: ввиду (слитно) vs в виду (раздельно)\n"
+        "• В течение (предлог) – Е, в течении (сущ.) – И")
 
 # ==================== ОБРАБОТКА ФОТО ====================
 @bot.message_handler(content_types=['photo'])
@@ -452,57 +713,126 @@ def handle_photo(message):
         processed_path = preprocess_image(image_path)
         img = Image.open(processed_path)
 
+        # Пробуем разные конфигурации распознавания
         text = ""
         configs = [
             '--psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАаБбВвГгДдЕеЁёЖжЗзИиЙйКкЛлМмНнОоПпРрСсТтУуФфХхЦцЧчШшЩщЪъЫыЬьЭэЮюЯя.,;:!?()"\'',
             '--psm 4',
-            '--psm 3'
+            '--psm 3',
+            '--psm 6',
+            '--psm 11'
         ]
         for config in configs:
             try:
                 text = pytesseract.image_to_string(img, lang='rus+eng', config=config)
                 if len(text.strip()) > 10:
                     break
-            except:
+            except Exception as e:
+                print(f"Ошибка распознавания с конфигом {config}: {e}")
                 continue
 
         if not text.strip():
-            bot.edit_message_text("❌ Не удалось распознать текст. Попробуйте другое фото.", message.chat.id, processing_msg.message_id)
+            bot.edit_message_text(
+                "❌ Не удалось распознать текст. Попробуйте:\n"
+                "• Сделать фото более чётким\n"
+                "• Использовать скриншот экрана\n"
+                "• Улучшить освещение",
+                message.chat.id, 
+                processing_msg.message_id
+            )
             return
 
-        # Логируем распознанный текст (для отладки)
-        print(f"Распознанный текст: {text[:300]}")
+        # Логируем распознанный текст
+        print(f"Распознанный текст: {text[:500]}")
 
+        # Проверяем, есть ли ключевые слова для задания на соответствие
+        if "соответствие" in text.lower() or "единицами измерения" in text.lower():
+            # Ищем соответствия по ключевым словам
+            pairs = {
+                "работа": "Джоуль (Дж)",
+                "вес тела": "Ньютон (Н)",
+                "путь": "Метр (м)",
+                "скорость": "м/с",
+                "масса": "кг",
+                "сила": "Н",
+                "давление": "Па",
+                "плотность": "кг/м³"
+            }
+            
+            # Проверяем, какие из них есть в распознанном тексте
+            found_pairs = {}
+            for term, defin in pairs.items():
+                if term in text.lower() or term.replace(' ', '') in text.lower().replace(' ', ''):
+                    found_pairs[term] = defin
+            
+            if found_pairs:
+                answer_text = format_matching_answer(found_pairs)
+                bot.edit_message_text(
+                    f"✅ Найдены соответствия:\n\n{answer_text}",
+                    message.chat.id,
+                    processing_msg.message_id
+                )
+                # Показываем распознанный текст
+                bot.send_message(message.chat.id, f"📄 Распознанный текст:\n{text[:1500]}")
+                # Удаляем файлы
+                os.remove(image_path)
+                if os.path.exists(processed_path):
+                    os.remove(processed_path)
+                return
+
+        # Поиск в базе тестов МЭШ
         test_data, similarity = mesh_db.find_test_by_text(text)
+        
         if test_data and similarity > 30:
             answer_text = format_full_test_answer(test_data, similarity)
             if len(answer_text) > 4000:
                 parts = [answer_text[i:i+4000] for i in range(0, len(answer_text), 4000)]
-                bot.edit_message_text(f"✅ Найден тест в базе:\n\n{parts[0]}", message.chat.id, processing_msg.message_id)
+                bot.edit_message_text(
+                    f"✅ Найден тест в базе:\n\n{parts[0]}",
+                    message.chat.id,
+                    processing_msg.message_id
+                )
                 for part in parts[1:]:
                     bot.send_message(message.chat.id, part)
             else:
-                bot.edit_message_text(f"✅ Найден тест в базе:\n\n{answer_text}", message.chat.id, processing_msg.message_id)
+                bot.edit_message_text(
+                    f"✅ Найден тест в базе:\n\n{answer_text}",
+                    message.chat.id,
+                    processing_msg.message_id
+                )
         else:
+            # Извлекаем вопросы и ищем по отдельности
             questions = extract_test_questions(text)
             if not questions:
+                # Если вопросы не найдены, используем весь текст
                 questions = [{'question': text, 'options': []}]
+            
             answer_text = format_individual_answers(questions)
-            bot.edit_message_text(f"📝 Найдены ответы:\n\n{answer_text}", message.chat.id, processing_msg.message_id)
+            bot.edit_message_text(
+                f"📝 Найдены ответы:\n\n{answer_text}",
+                message.chat.id,
+                processing_msg.message_id
+            )
 
+        # Показываем распознанный текст
         bot.send_message(message.chat.id, f"📄 Распознанный текст:\n{text[:1500]}")
+        
+        # Удаляем временные файлы
         os.remove(image_path)
         if os.path.exists(processed_path):
             os.remove(processed_path)
 
     except Exception as e:
         bot.reply_to(message, f"❌ Ошибка: {str(e)}")
+        logger.error(f"Ошибка в handle_photo: {e}")
 
 # ==================== ОБРАБОТКА ТЕКСТА ====================
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
     text = message.text.lower().strip()
-    if text in ["привет", "здравствуйте", "hi"]:
+    
+    # Обработка кнопок
+    if text in ["привет", "здравствуйте", "hi", "hello"]:
         bot.reply_to(message, "Привет! Отправь фото теста или задай вопрос.")
         return
     if text in ["📚 предметы", "предметы"]:
@@ -512,12 +842,13 @@ def handle_text(message):
         test_stats(message)
         return
     if text in ["🔍 найти тест", "найти тест"]:
-        bot.reply_to(message, "Используй /find_test <ключевые слова>")
+        bot.reply_to(message, "Используй команду /find_test <ключевые слова>")
         return
     if text in ["❓ помощь", "помощь"]:
         send_help(message)
         return
 
+    # Поиск ответа
     answer = find_answer_with_context(message.text)
     if answer:
         bot.reply_to(message, f"💡 Ответ: {answer}")
@@ -530,5 +861,23 @@ def handle_text(message):
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
+    # Отключаем вебхук перед запуском
+    try:
+        bot.remove_webhook()
+        print("✅ Вебхук отключён")
+    except Exception as e:
+        print(f"⚠️ Ошибка при отключении вебхука: {e}")
+    
+    # Небольшая задержка
+    time.sleep(2)
+    
     print("🚀 Бот для решения тестов МЭШ запущен!")
-    bot.infinity_polling()
+    
+    # Запускаем с обработкой ошибок
+    while True:
+        try:
+            bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        except Exception as e:
+            print(f"❌ Ошибка polling: {e}")
+            print("🔄 Перезапуск через 5 секунд...")
+            time.sleep(5)
