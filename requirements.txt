@@ -1,9 +1,0 @@
-pyTelegramBotAPI
-pytesseract
-Pillow
-opencv-python-headless
-numpy
-googlesearch-python
-fuzzywuzzy
-python-Levenshtein
-requests
