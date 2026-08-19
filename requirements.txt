@@ -1,0 +1,8 @@
+pyTelegramBotAPI
+pytesseract
+Pillow
+opencv-python
+numpy
+googlesearch-python
+fuzzywuzzy
+python-Levenshtein
