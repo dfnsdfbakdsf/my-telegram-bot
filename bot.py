@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import subprocess
+import shutil  # <-- добавили
 import json
 from io import BytesIO
 from difflib import SequenceMatcher
@@ -17,15 +18,30 @@ from googlesearch import search
 from fuzzywuzzy import fuzz
 
 # ==================== НАСТРОЙКИ TESSERACT ====================
-# Явно указываем путь к Tesseract (на Railway он обычно здесь)
-pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+# Ищем Tesseract в системе
+tesseract_path = shutil.which('tesseract')
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+    print(f"✅ Tesseract найден по пути: {tesseract_path}")
+else:
+    # Пробуем стандартные пути (на случай, если shutil не сработал)
+    possible_paths = ['/usr/bin/tesseract', '/usr/local/bin/tesseract', '/bin/tesseract']
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            print(f"✅ Tesseract найден по пути: {path}")
+            break
+    else:
+        print("❌ Tesseract НЕ НАЙДЕН! Убедитесь, что он установлен.")
+        # Можно выйти или продолжить, но OCR не будет работать
+        # raise RuntimeError("Tesseract not found")
 
-# Проверяем доступность Tesseract при запуске
+# Проверяем, что Tesseract работает
 try:
-    subprocess.run(['tesseract', '--version'], capture_output=True, check=True)
-    print("✅ Tesseract найден")
+    subprocess.run([pytesseract.pytesseract.tesseract_cmd, '--version'], capture_output=True, check=True)
+    print("✅ Tesseract работает")
 except Exception as e:
-    print(f"❌ Tesseract НЕ найден: {e}")
+    print(f"❌ Tesseract не отвечает: {e}")
 
 # ==================== ТОКЕН ====================
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
