@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Устанавливаем Tesseract и необходимые системные библиотеки
+# Устанавливаем Tesseract и системные библиотеки
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-rus \
