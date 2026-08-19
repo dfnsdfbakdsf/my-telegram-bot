@@ -14,11 +14,28 @@ def preprocess_image(image_path):
         img = cv2.imread(image_path)
         if img is None:
             return image_path
-        img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        
+        # Увеличение размера
+        img = cv2.resize(img, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+        
+        # Преобразование в оттенки серого
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY, 11, 2)
+        
+        # Увеличение контраста
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
+        enhanced = clahe.apply(gray)
+        
+        # Адаптивный порог
+        binary = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY, 15, 3)
+        
+        # Удаление шума
         denoised = cv2.medianBlur(binary, 3)
+        
+        # Морфологическая операция
+        kernel = np.ones((1, 2), np.uint8)
+        denoised = cv2.dilate(denoised, kernel, iterations=1)
+        
         processed_path = image_path.replace('.jpg', '_processed.jpg')
         cv2.imwrite(processed_path, denoised)
         return processed_path
@@ -27,32 +44,70 @@ def preprocess_image(image_path):
         return image_path
 
 def extract_test_questions(text):
-    """Извлечение вопросов из распознанного текста"""
+    """Улучшенное извлечение вопросов из распознанного текста"""
     lines = text.split('\n')
     questions = []
     current_q = ""
     current_opts = []
     in_question = False
     
+    # Сначала ищем задания с вариантами
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        if re.search(r'^\d+[.)]\s*', line) or re.search(r'^(Вопрос|Задание)\s*\d+', line, re.I):
+        
+        # Проверка на начало задания
+        if re.search(r'ЗАДАНИЕ\s*\d+', line, re.I) or re.search(r'Вопрос\s*\d+', line, re.I):
             if current_q:
                 questions.append({'question': current_q, 'options': current_opts})
             current_q = line
             current_opts = []
             in_question = True
         elif in_question:
-            if re.match(r'^[А-Яа-яA-Za-z]\)', line) or re.match(r'^\d+\)', line):
-                current_opts.append(line)
-            else:
-                current_q += " " + line
+            # Проверка на варианты ответов
+            if re.match(r'^[•●○▪\-]\s*', line) or re.match(r'^[А-Яа-яA-Za-z]\)', line) or re.match(r'^[0-9]+[.)]', line):
+                # Убираем маркер
+                clean_option = re.sub(r'^[•●○▪\-]\s*', '', line)
+                clean_option = re.sub(r'^[А-Яа-яA-Za-z]\)\s*', '', clean_option)
+                clean_option = re.sub(r'^[0-9]+[.)]\s*', '', clean_option)
+                if clean_option:
+                    current_opts.append(clean_option)
+            elif line and len(line) > 5:
+                # Если это продолжение вопроса
+                if not current_q.endswith('...') and not current_q.endswith('?'):
+                    current_q += " " + line
+                else:
+                    current_q = line
     
     if current_q:
         questions.append({'question': current_q, 'options': current_opts})
+    
+    # Если не нашли структурированных вопросов, пытаемся найти по ключевым словам
+    if not questions:
+        # Ищем текст между "ЗАДАНИЕ" и вариантами ответов
+        zadanie_match = re.search(r'ЗАДАНИЕ\s*\d+.*?(?=[•●○▪\-]|\n\n)', text, re.DOTALL | re.IGNORECASE)
+        if zadanie_match:
+            q_text = zadanie_match.group(0).strip()
+            # Ищем варианты
+            options = re.findall(r'[•●○▪\-]\s*([^\n]+)', text)
+            if options:
+                # Очищаем варианты
+                clean_options = [re.sub(r'^[•●○▪\-]\s*', '', opt).strip() for opt in options]
+                questions.append({'question': q_text, 'options': clean_options})
+    
     return questions
+
+def clean_text_for_deepseek(question, options):
+    """Подготовка текста для отправки в DeepSeek"""
+    clean_q = re.sub(r'[^\w\s.,;:!?()"\'\-]', '', question)
+    clean_q = re.sub(r'\s+', ' ', clean_q).strip()
+    
+    if options:
+        clean_options = [re.sub(r'[^\w\s.,;:!?()"\'\-]', '', opt) for opt in options]
+        clean_options = [re.sub(r'\s+', ' ', opt).strip() for opt in clean_options if opt]
+        return clean_q, clean_options
+    return clean_q, []
 
 # ===== ФОРМАТИРОВАНИЕ ОТВЕТОВ =====
 
@@ -85,38 +140,6 @@ def format_full_test_answer(test_data, similarity):
                             lines.append(f"  • {opt}")
             lines.append("")
     
-    # Добавляем объяснение для презентаций
-    if test_data.get('topic') == "Оформление презентаций":
-        lines.append("📖 Объяснение:")
-        lines.append("Правила оформления презентаций:")
-        lines.append("1. Используйте однотонные фоны — облегчает восприятие")
-        lines.append("2. Не перегружайте слайды анимацией — отвлекает внимание")
-        lines.append("3. Используйте один вид переходов — единый стиль")
-        lines.append("4. Не более двух шрифтов — один для заголовков, другой для текста")
-        lines.append("")
-        lines.append("❌ Ошибочное утверждение:")
-        lines.append("«Старайтесь как можно больше добавить на слайд анимации, это привлечёт внимание аудитории»")
-    
-    # Добавляем объяснение для биологии
-    if test_data.get('topic') == "Селекция растений":
-        lines.append("📖 Объяснение:")
-        lines.append("Задачи селекции растений:")
-        lines.append("✅ Верные задачи:")
-        lines.append("1. Повышение урожайности и качества культур")
-        lines.append("2. Разработка методов создания и совершенствования сортов")
-        lines.append("3. Создание сортов и гибридов с нужными человеку свойствами")
-        lines.append("")
-        lines.append("❌ Не относятся к селекции:")
-        lines.append("• Разработка приёмов возделывания (это агротехника)")
-        lines.append("• Наблюдение и анализ роста урожаев (это мониторинг)")
-    
-    # Добавляем объяснение для союзов
-    if test_data.get('topic') == "Союзы в сложных предложениях":
-        lines.append("📖 Объяснение:")
-        lines.append("• В предложении 'Лодка проплыла мимо и мы бросились догонять её'")
-        lines.append("  союз И соединяет две части сложного предложения.")
-        lines.append("• В других вариантах союз И соединяет однородные члены.")
-    
     return '\n'.join(lines)
 
 def format_matching_answer(pairs):
@@ -136,16 +159,18 @@ def format_matching_answer(pairs):
         lines.append(f"  • {term} → {defin}")
     return '\n'.join(lines)
 
-def format_individual_answers(questions, find_answer_with_context, search_in_internet):
+def format_individual_answers(questions, find_answer_func, search_func):
     """Форматирование ответов по отдельным вопросам"""
     lines = []
     for idx, q in enumerate(questions, 1):
-        ans = find_answer_with_context(q['question'])
+        ans = find_answer_func(q['question'])
         if not ans:
-            ans = search_in_internet(q['question']) or "Не удалось найти ответ"
+            ans = search_func(q['question']) or "Не удалось найти ответ"
         lines.append(f"📌 Вопрос {idx}: {q['question'][:150]}")
         if q.get('options'):
-            lines.append(f"📋 Варианты: {', '.join(q['options'])}")
+            lines.append("📋 Варианты:")
+            for opt in q['options']:
+                lines.append(f"  • {opt}")
         lines.append(f"💡 Ответ: {ans}")
         lines.append("")
     return '\n'.join(lines)
