@@ -394,7 +394,6 @@ class MESHTestsDatabase:
                 if 'questions' in test_data:
                     for q in test_data['questions']:
                         q_text = q.get('question', '').lower()
-                        # Проверяем, есть ли ключевые слова из вопроса в распознанном тексте
                         words = q_text.split()
                         for word in words:
                             if len(word) > 3 and word in clean_text:
@@ -724,7 +723,7 @@ def show_russian(message):
         "• Производные предлоги: ввиду (слитно) vs в виду (раздельно)\n"
         "• В течение (предлог) – Е, в течении (сущ.) – И")
 
-# ==================== ОБРАБОТКА ФОТО ====================
+# ==================== ОБРАБОТКА ФОТО (ИСПРАВЛЕННАЯ) ====================
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     try:
@@ -738,6 +737,7 @@ def handle_photo(message):
         processed_path = preprocess_image(image_path)
         img = Image.open(processed_path)
 
+        # Пробуем разные конфигурации распознавания
         text = ""
         configs = [
             '--psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАаБбВвГгДдЕеЁёЖжЗзИиЙйКкЛлМмНнОоПпРрСсТтУуФфХхЦцЧчШшЩщЪъЫыЬьЭэЮюЯя.,;:!?()"\'',
@@ -771,11 +771,33 @@ def handle_photo(message):
                 os.remove(processed_path)
             return
 
-        # Логируем распознанный текст (только в консоль)
+        # Логируем распознанный текст
         print(f"Распознанный текст: {text[:500]}")
 
-        # Проверка на задание про презентации
-        if "презентация" in text.lower() or "ошибочное утверждение" in text.lower() or "анимации" in text.lower():
+        # ============ ОПРЕДЕЛЕНИЕ ТЕМЫ ПО КЛЮЧЕВЫМ СЛОВАМ ============
+        text_lower = text.lower()
+        
+        topic_keywords = {
+            "информатика": ["презентация", "слайд", "анимация", "шрифт", "переход", "фон", "ошибочное утверждение"],
+            "физика": ["физика", "сила", "работа", "энергия", "скорость", "давление", "плотность", "масса", "вес"],
+            "математика": ["уравнение", "квадрат", "сумма", "разность", "треугольник", "график"],
+            "русский": ["предлог", "окончание", "падеж", "написание", "ввиду", "в течение"],
+            "английский": ["idiom", "phrasal", "spilt milk", "cloud nine", "bookworm"]
+        }
+        
+        detected_topic = None
+        for topic, keywords in topic_keywords.items():
+            for keyword in keywords:
+                if keyword in text_lower:
+                    detected_topic = topic
+                    break
+            if detected_topic:
+                break
+        
+        print(f"Определённая тема: {detected_topic}")
+
+        # ============ ЕСЛИ ТЕМА "ИНФОРМАТИКА" ============
+        if detected_topic == "информатика" or "презентация" in text_lower or "ошибочное утверждение" in text_lower:
             test_data = {
                 "subject": "Информатика",
                 "class": "7",
@@ -787,9 +809,9 @@ def handle_photo(message):
                         "question": "Укажите ошибочное утверждение.",
                         "answer": "Старайтесь как можно больше добавить на слайд анимации, это привлечёт внимание аудитории",
                         "options": [
-                            "Отдавайте предпочтение однотонным фонам, это облегчает восприятие",
+                            "Отдавайте предпочтение однотонным фонам, это облегчает восприятие представленной на слайде информации",
                             "Старайтесь как можно больше добавить на слайд анимации, это привлечёт внимание аудитории",
-                            "Чтобы выдержать единый стиль презентации, рекомендуется использовать один вид перехода",
+                            "Чтобы выдержать единый стиль презентации, рекомендуется использовать один вид перехода между слайдами",
                             "Используйте не более двух шрифтов: один для заголовков, другой для текста"
                         ]
                     }
@@ -806,8 +828,8 @@ def handle_photo(message):
                 os.remove(processed_path)
             return
 
-        # Проверяем, есть ли ключевые слова для задания на соответствие
-        if "соответствие" in text.lower() or "единицами измерения" in text.lower():
+        # ============ ЗАДАНИЕ НА СООТВЕТСТВИЕ ============
+        if "соответствие" in text_lower or "единицами измерения" in text_lower:
             pairs = {
                 "работа": "Джоуль (Дж)",
                 "вес тела": "Ньютон (Н)",
@@ -821,7 +843,7 @@ def handle_photo(message):
             
             found_pairs = {}
             for term, defin in pairs.items():
-                if term in text.lower() or term.replace(' ', '') in text.lower().replace(' ', ''):
+                if term in text_lower or term.replace(' ', '') in text_lower.replace(' ', ''):
                     found_pairs[term] = defin
             
             if found_pairs:
@@ -836,7 +858,36 @@ def handle_photo(message):
                     os.remove(processed_path)
                 return
 
-        # Поиск в базе тестов МЭШ
+        # ============ ПОИСК В БАЗЕ ТЕСТОВ С УЧЁТОМ ТЕМЫ ============
+        if detected_topic:
+            best_match = None
+            best_score = 0
+            for test_id, test_data in mesh_db.tests.items():
+                if test_data.get('subject', '').lower() == detected_topic:
+                    score = 80
+                    if 'questions' in test_data:
+                        for q in test_data['questions']:
+                            q_text = q.get('question', '').lower()
+                            ratio = fuzz.partial_ratio(text_lower, q_text)
+                            if ratio > score:
+                                score = ratio
+                    if score > best_score:
+                        best_score = score
+                        best_match = test_data
+            
+            if best_match and best_score > 30:
+                answer_text = format_full_test_answer(best_match, best_score)
+                bot.edit_message_text(
+                    f"✅ Найден тест в базе:\n\n{answer_text}",
+                    message.chat.id,
+                    processing_msg.message_id
+                )
+                os.remove(image_path)
+                if os.path.exists(processed_path):
+                    os.remove(processed_path)
+                return
+
+        # ============ ОБЫЧНЫЙ ПОИСК ============
         test_data, similarity = mesh_db.find_test_by_text(text)
         
         if test_data and similarity > 30:
