@@ -1,5 +1,0 @@
-[build]
-pythonVersion = "3.11"
-
-[phases.setup]
-nixPkgs = ["tesseract", "tesseract-ocr-eng", "tesseract-ocr-rus", "libGL", "libGLU", "libX11", "libxcb", "libXext", "libXrender", "libXfixes"]
