@@ -22,8 +22,8 @@ from phrasal_verbs import phrasal_verbs
 from topic_keywords import topic_keywords
 from mesh_tests import MESHTestsDatabase
 from utils import (
-    preprocess_image, extract_test_questions, 
-    format_full_test_answer, format_matching_answer, 
+    preprocess_image, extract_test_questions,
+    format_full_test_answer, format_matching_answer,
     format_individual_answers, detect_topic
 )
 from deepseek_api import ask_deepseek, ask_deepseek_with_options
@@ -61,7 +61,7 @@ logging.basicConfig(level=logging.INFO)
 # ==================== ИНИЦИАЛИЗАЦИЯ БАЗЫ ====================
 mesh_db = MESHTestsDatabase()
 
-# ==================== ПОИСК ОТВЕТОВ ====================
+# ==================== ПОИСК ОТВЕТОВ (ОБЫЧНЫЙ, БЕЗ DEEPSEEK) ====================
 
 def find_answer_in_knowledge(question):
     if not question:
@@ -69,14 +69,14 @@ def find_answer_in_knowledge(question):
     q = question.lower().strip()
     q = re.sub(r'[^\w\s?]', '', q)
     q = re.sub(r'\s+', ' ', q).strip()
-    
+
     if q in knowledge_base:
         return knowledge_base[q]
-    
+
     for verb, meaning in phrasal_verbs.items():
         if verb in q:
             return f"{verb} = {meaning}"
-    
+
     best_match = None
     best_score = 0
     for key, value in knowledge_base.items():
@@ -84,43 +84,19 @@ def find_answer_in_knowledge(question):
         if score > best_score and score > 60:
             best_score = score
             best_match = value
-    
+
     return best_match
 
-def find_answer_with_context(question):
+def find_answer_in_tests(question):
+    """Поиск ответа в тестах МЭШ"""
     if not question:
         return None
-    q = question.lower().strip()
-    
-    if re.search(r'___|\.\.\.|\([A-Za-z]+\)', q):
-        for verb in phrasal_verbs.keys():
-            if verb.replace(' ', '') in q.replace(' ', '') or verb in q:
-                return verb
-        if 'fall' in q and 'with' in q:
-            return "out (fall out with = поссориться)"
-        if 'get' in q and 'with' in q:
-            return "along (get along with = ладить)"
-    
-    for key, value in knowledge_base.items():
-        if key in q:
-            return value
-    
-    kb_answer = find_answer_in_knowledge(question)
-    if kb_answer:
-        return kb_answer
-    
     test_data, sim = mesh_db.find_test_by_text(question)
     if test_data and sim > 30:
         if 'questions' in test_data and test_data['questions']:
             return test_data['questions'][0].get('answer', None)
         if 'answers' in test_data:
             return list(test_data['answers'].values())[0]
-    
-    # Если ничего не нашли, пробуем DeepSeek
-    deepseek_answer = ask_deepseek(question)
-    if deepseek_answer:
-        return f"🤖 DeepSeek: {deepseek_answer}"
-    
     return None
 
 def search_in_internet(query):
@@ -149,16 +125,16 @@ def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("📚 Предметы"), types.KeyboardButton("📊 Статистика"))
     markup.add(types.KeyboardButton("🔍 Найти тест"), types.KeyboardButton("❓ Помощь"))
-    
+
     has_deepseek = "✅" if os.getenv("DEEPSEEK_API_KEY") else "❌"
-    
-    bot.reply_to(message, 
+
+    bot.reply_to(message,
         f"👋 Привет! Я бот для решения тестов МЭШ 7-8 классов.\n\n"
         f"📸 Отправь мне фото теста, и я найду ответы!\n"
         f"🤖 DeepSeek: {has_deepseek}\n\n"
         f"📚 Я знаю все предметы: Математика, Геометрия, Физика, Химия, Биология,\n"
         f"География, История, Обществознание, Русский язык, Литература,\n"
-        f"Английский язык, Информатика и ОБЖ!", 
+        f"Английский язык, Информатика и ОБЖ!",
         reply_markup=markup)
 
 @bot.message_handler(commands=['help'])
@@ -185,7 +161,7 @@ def send_help(message):
 def check_deepseek(message):
     """Проверка подключения к DeepSeek"""
     if os.getenv("DEEPSEEK_API_KEY"):
-        bot.reply_to(message, "✅ DeepSeek API подключен! Бот может использовать нейросеть для ответов.")
+        bot.reply_to(message, "✅ DeepSeek API подключен! Бот будет использовать нейросеть для ответов.")
     else:
         bot.reply_to(message, "❌ DeepSeek API НЕ подключен!\n\nДобавьте переменную DEEPSEEK_API_KEY в настройках Railway.")
 
@@ -305,7 +281,7 @@ def show_russian(message):
         "4. В течение (предлог) – Е\n"
         "   В течении (сущ.) – И")
 
-# ==================== ОБРАБОТКА ФОТО ====================
+# ==================== ОБРАБОТКА ФОТО (СНАЧАЛА DEEPSEEK) ====================
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     try:
@@ -339,7 +315,7 @@ def handle_photo(message):
                 "• Сделать фото более чётким\n"
                 "• Использовать скриншот экрана\n"
                 "• Улучшить освещение",
-                message.chat.id, 
+                message.chat.id,
                 processing_msg.message_id
             )
             os.remove(image_path)
@@ -353,6 +329,79 @@ def handle_photo(message):
         detected_topic = detect_topic(text, topic_keywords)
         print(f"Определённая тема: {detected_topic}")
 
+        # === ИЗВЛЕКАЕМ ВОПРОСЫ ===
+        questions = extract_test_questions(text)
+        if not questions:
+            questions = [{'question': text, 'options': []}]
+
+        # === ============ СНАЧАЛА ПЫТАЕМСЯ ПОЛУЧИТЬ ОТВЕТ ОТ DEEPSEEK ============ ===
+        if os.getenv("DEEPSEEK_API_KEY"):
+            bot.edit_message_text(
+                "🤖 Отправляю запрос в DeepSeek...",
+                message.chat.id,
+                processing_msg.message_id
+            )
+
+            deepseek_answers = []
+            for q in questions:
+                question_text = q['question']
+                options = q.get('options', [])
+
+                if options:
+                    deepseek_answer = ask_deepseek_with_options(question_text, options)
+                else:
+                    deepseek_answer = ask_deepseek(question_text)
+
+                if deepseek_answer:
+                    deepseek_answers.append({
+                        'question': question_text,
+                        'options': options,
+                        'answer': f"🤖 {deepseek_answer}"
+                    })
+                else:
+                    # Если DeepSeek не ответил, ищем в базе
+                    answer = find_answer_in_knowledge(question_text) or find_answer_in_tests(question_text)
+                    if not answer:
+                        answer = search_in_internet(question_text) or "Не удалось найти ответ"
+                    deepseek_answers.append({
+                        'question': question_text,
+                        'options': options,
+                        'answer': answer
+                    })
+
+            # Формируем ответ
+            response = "✅ **Результаты (DeepSeek):**\n\n"
+            for idx, data in enumerate(deepseek_answers, 1):
+                response += f"📌 Вопрос {idx}: {data['question'][:150]}\n"
+                if data['options']:
+                    response += "📋 Варианты:\n"
+                    for opt in data['options']:
+                        response += f"  • {opt}\n"
+                response += f"💡 Ответ: {data['answer']}\n\n"
+
+            # Отправляем ответ
+            if len(response) > 4000:
+                parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+                bot.edit_message_text(
+                    parts[0],
+                    message.chat.id,
+                    processing_msg.message_id
+                )
+                for part in parts[1:]:
+                    bot.send_message(message.chat.id, part)
+            else:
+                bot.edit_message_text(
+                    response,
+                    message.chat.id,
+                    processing_msg.message_id
+                )
+
+            os.remove(image_path)
+            if os.path.exists(processed_path):
+                os.remove(processed_path)
+            return
+
+        # === ЕСЛИ DEEPSEEK НЕ ПОДКЛЮЧЕН — ИСПОЛЬЗУЕМ БАЗУ ===
         # === ПОИСК ПО ТЕМЕ ===
         if detected_topic:
             best_match = None
@@ -369,7 +418,7 @@ def handle_photo(message):
                     if score > best_score:
                         best_score = score
                         best_match = test_data
-            
+
             if best_match and best_score > 30:
                 answer_text = format_full_test_answer(best_match, best_score)
                 bot.edit_message_text(
@@ -394,12 +443,12 @@ def handle_photo(message):
                 "давление": "Па",
                 "плотность": "кг/м³"
             }
-            
+
             found_pairs = {}
             for term, defin in pairs.items():
                 if term in text_lower or term.replace(' ', '') in text_lower.replace(' ', ''):
                     found_pairs[term] = defin
-            
+
             if found_pairs:
                 answer_text = format_matching_answer(found_pairs)
                 bot.edit_message_text(
@@ -414,7 +463,7 @@ def handle_photo(message):
 
         # === ОБЫЧНЫЙ ПОИСК ===
         test_data, similarity = mesh_db.find_test_by_text(text)
-        
+
         if test_data and similarity > 30:
             answer_text = format_full_test_answer(test_data, similarity)
             if len(answer_text) > 4000:
@@ -433,50 +482,13 @@ def handle_photo(message):
                     processing_msg.message_id
                 )
         else:
-            # === ЕСЛИ ТЕСТ НЕ НАЙДЕН В БАЗЕ ===
-            questions = extract_test_questions(text)
-            if not questions:
-                questions = [{'question': text, 'options': []}]
-            
-            # Сначала пробуем DeepSeek
-            if os.getenv("DEEPSEEK_API_KEY"):
-                bot.edit_message_text(
-                    "🤖 Отправляю запрос в DeepSeek...",
-                    message.chat.id,
-                    processing_msg.message_id
-                )
-                
-                for q in questions:
-                    if q.get('options'):
-                        # Отправляем с вариантами
-                        deepseek_answer = ask_deepseek_with_options(q['question'], q['options'])
-                    else:
-                        deepseek_answer = ask_deepseek(q['question'])
-                    
-                    if deepseek_answer:
-                        # Обновляем сообщение с ответом DeepSeek
-                        answer_text = f"🤖 **DeepSeek ответ:**\n\n{q['question']}\n\n**Ответ:** {deepseek_answer}"
-                        bot.edit_message_text(
-                            f"📝 Найдены ответы (через DeepSeek):\n\n{answer_text}",
-                            message.chat.id,
-                            processing_msg.message_id
-                        )
-                    else:
-                        # Если DeepSeek не ответил, ищем обычным способом
-                        answer_text = format_individual_answers(questions, find_answer_with_context, search_in_internet)
-                        bot.edit_message_text(
-                            f"📝 Найдены ответы:\n\n{answer_text}",
-                            message.chat.id,
-                            processing_msg.message_id
-                        )
-            else:
-                # Без DeepSeek — обычный поиск
-                answer_text = format_individual_answers(questions, find_answer_with_context, search_in_internet)
-                bot.edit_message_text(
-                    f"📝 Найдены ответы:\n\n{answer_text}",
-                    message.chat.id,
-                    processing_msg.message_id
-                )
+            # Индивидуальные ответы
+            answer_text = format_individual_answers(questions, find_answer_in_knowledge, search_in_internet)
+            bot.edit_message_text(
+                f"📝 Найдены ответы:\n\n{answer_text}",
+                message.chat.id,
+                processing_msg.message_id
+            )
 
         os.remove(image_path)
         if os.path.exists(processed_path):
@@ -486,11 +498,12 @@ def handle_photo(message):
         bot.reply_to(message, f"❌ Ошибка: {str(e)}")
         logger.error(f"Ошибка в handle_photo: {e}")
 
-# ==================== ОБРАБОТКА ТЕКСТА ====================
+# ==================== ОБРАБОТКА ТЕКСТА (СНАЧАЛА DEEPSEEK) ====================
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
     text = message.text.lower().strip()
-    
+
+    # Обработка кнопок
     if text in ["привет", "здравствуйте", "hi", "hello"]:
         bot.reply_to(message, "Привет! Отправь фото теста или задай вопрос.")
         return
@@ -507,16 +520,16 @@ def handle_text(message):
         send_help(message)
         return
 
-    # Сначала пробуем DeepSeek
+    # === СНАЧАЛА ПЫТАЕМСЯ ПОЛУЧИТЬ ОТВЕТ ОТ DEEPSEEK ===
     if os.getenv("DEEPSEEK_API_KEY"):
         bot.send_chat_action(message.chat.id, "typing")
         deepseek_answer = ask_deepseek(message.text)
         if deepseek_answer:
-            bot.reply_to(message, f"🤖 DeepSeek: {deepseek_answer}")
+            bot.reply_to(message, f"🤖 **DeepSeek ответ:**\n\n{deepseek_answer}")
             return
 
     # Если DeepSeek не ответил или нет ключа
-    answer = find_answer_with_context(message.text)
+    answer = find_answer_in_knowledge(message.text) or find_answer_in_tests(message.text)
     if answer:
         bot.reply_to(message, f"💡 Ответ: {answer}")
     else:
@@ -533,16 +546,16 @@ if __name__ == "__main__":
         print("✅ Вебхук отключён")
     except Exception as e:
         print(f"⚠️ Ошибка при отключении вебхука: {e}")
-    
+
     time.sleep(2)
-    
+
     print("🚀 Бот для решения тестов МЭШ запущен!")
     print(f"📚 Всего тестов: {len(mesh_db.tests)}")
     print(f"📝 Всего вопросов: {sum(len(t.get('questions', [])) for t in mesh_db.tests.values())}")
     print(f"📚 Предметов: 12")
     print(f"📖 Записей в базе знаний: {len(knowledge_base)}")
-    print(f"🤖 DeepSeek: {'✅ Подключен' if os.getenv('DEEPSEEK_API_KEY') else '❌ Не подключен'}")
-    
+    print(f"🤖 DeepSeek: {'✅ Подключен (приоритетный режим)' if os.getenv('DEEPSEEK_API_KEY') else '❌ Не подключен'}")
+
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=60)
