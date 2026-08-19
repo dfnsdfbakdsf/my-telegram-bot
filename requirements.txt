@@ -1,7 +1,7 @@
 pyTelegramBotAPI
 pytesseract
 Pillow
-opencv-python
+opencv-python-headless
 numpy
 googlesearch-python
 fuzzywuzzy
