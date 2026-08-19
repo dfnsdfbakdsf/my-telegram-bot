@@ -6,3 +6,4 @@ numpy
 googlesearch-python
 fuzzywuzzy
 python-Levenshtein
+requests
