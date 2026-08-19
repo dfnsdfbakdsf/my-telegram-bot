@@ -19,7 +19,6 @@ from googlesearch import search
 from fuzzywuzzy import fuzz
 
 # ==================== НАСТРОЙКИ TESSERACT ====================
-# Ищем Tesseract в системе
 tesseract_path = shutil.which('tesseract')
 if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
@@ -34,7 +33,6 @@ else:
     else:
         print("❌ Tesseract НЕ НАЙДЕН!")
 
-# Проверяем работу Tesseract
 try:
     subprocess.run([pytesseract.pytesseract.tesseract_cmd, '--version'], capture_output=True, check=True)
     print("✅ Tesseract работает")
@@ -52,7 +50,6 @@ logging.basicConfig(level=logging.INFO)
 
 # ==================== БАЗА ЗНАНИЙ ====================
 knowledge_base = {
-    # Математика
     "формулы сокращенного умножения": "(a+b)² = a² + 2ab + b²; (a-b)² = a² - 2ab + b²; a² - b² = (a-b)(a+b)",
     "квадрат суммы": "(a+b)² = a² + 2ab + b²",
     "квадрат разности": "(a-b)² = a² - 2ab + b²",
@@ -60,8 +57,6 @@ knowledge_base = {
     "линейное уравнение": "Уравнение вида ax + b = 0, где a ≠ 0. Решение: x = -b/a",
     "сумма углов треугольника": "180°",
     "свойство смежных углов": "Сумма смежных углов равна 180°",
-    
-    # Физика
     "скорость": "v = s/t",
     "плотность": "ρ = m/V",
     "сила тяжести": "F = mg",
@@ -80,37 +75,23 @@ knowledge_base = {
     "мощность единица измерения": "Ватт (Вт)",
     "время единица измерения": "Секунда (с)",
     "температура единица измерения": "Кельвин (К)",
-    
-    # Химия
     "атом": "Мельчайшая частица химического элемента",
     "молекула": "Мельчайшая частица вещества",
     "валентность": "Способность атомов присоединять другие атомы",
     "оксиды": "Соединения элементов с кислородом",
     "кислоты": "Вещества, содержащие водород и кислотный остаток",
-    
-    # Биология
     "фотосинтез": "Образование органических веществ на свету",
     "клетка": "Элементарная единица живого",
     "царства живой природы": "Бактерии, Грибы, Растения, Животные",
-    
-    # География
     "материки": "Евразия, Африка, Северная Америка, Южная Америка, Антарктида, Австралия",
     "океаны": "Тихий, Атлантический, Индийский, Северный Ледовитый, Южный",
-    
-    # История
     "крещение руси": "988 год",
     "куликовская битва": "1380 год",
-    
-    # Обществознание
     "конституция": "Основной закон",
     "права ребенка": "Права до 18 лет",
-    
-    # Английский
     "present simple": "Действие происходит регулярно",
     "past simple": "Действие произошло в прошлом",
     "irregular verbs": "Неправильные глаголы",
-    
-    # 8 класс
     "теорема пифагора": "c² = a² + b²",
     "площадь треугольника": "S = ½ · a · h",
     "количество теплоты": "Q = cmΔt",
@@ -159,7 +140,6 @@ class MESHTestsDatabase:
         self._init_tests()
 
     def _init_tests(self):
-        # Физика 7: Механическая работа
         self.tests["phys_7_001"] = {
             "id": "phys_7_001",
             "subject": "Физика",
@@ -207,7 +187,6 @@ class MESHTestsDatabase:
             "similarity": 90
         }
         
-        # Физика 7: Единицы измерения (соответствие)
         self.tests["phys_7_006"] = {
             "id": "phys_7_006",
             "subject": "Физика",
@@ -247,7 +226,6 @@ class MESHTestsDatabase:
             "similarity": 95
         }
         
-        # Английский 7: Идиомы
         self.tests["eng_7_002"] = {
             "id": "eng_7_002",
             "subject": "Английский язык",
@@ -272,7 +250,6 @@ class MESHTestsDatabase:
             "similarity": 95
         }
         
-        # Русский 7: Предлоги
         self.tests["rus_7_003"] = {
             "id": "rus_7_003",
             "subject": "Русский язык",
@@ -297,7 +274,6 @@ class MESHTestsDatabase:
             "similarity": 95
         }
         
-        # Русский 7: Окончания
         self.tests["rus_7_001"] = {
             "id": "rus_7_001",
             "subject": "Русский язык",
@@ -323,7 +299,6 @@ class MESHTestsDatabase:
         best_score = 0
         
         for test_id, test_data in self.tests.items():
-            # По ID
             test_words = set(test_id.replace('_', ' ').split())
             question_words = set(clean_text.split())
             common = test_words & question_words
@@ -333,7 +308,6 @@ class MESHTestsDatabase:
                     best_score = score
                     best_match = test_data
             
-            # По вопросам
             if 'questions' in test_data:
                 for q in test_data['questions']:
                     q_text = q.get('question', '').lower()
@@ -343,7 +317,6 @@ class MESHTestsDatabase:
                             best_score = ratio
                             best_match = test_data
             
-            # По полному тексту
             if 'full_text' in test_data:
                 ft = test_data['full_text'].lower()
                 ratio = fuzz.partial_ratio(clean_text, ft[:300])
@@ -358,25 +331,15 @@ mesh_db = MESHTestsDatabase()
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 def preprocess_image(image_path):
-    """Улучшенная предобработка для OCR"""
     try:
         img = cv2.imread(image_path)
         if img is None:
             return image_path
-        
-        # Увеличение размера
         img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        
-        # Преобразование в оттенки серого
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Адаптивный порог
         binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                        cv2.THRESH_BINARY, 11, 2)
-        
-        # Удаление шума
         denoised = cv2.medianBlur(binary, 3)
-        
         processed_path = image_path.replace('.jpg', '_processed.jpg')
         cv2.imwrite(processed_path, denoised)
         return processed_path
@@ -385,15 +348,11 @@ def preprocess_image(image_path):
         return image_path
 
 def clean_text(text):
-    """Очистка текста от мусора"""
-    # Удаляем лишние пробелы
     text = re.sub(r'\s+', ' ', text)
-    # Удаляем странные символы
     text = re.sub(r'[^\w\s.,;:!?()"\'\-]', '', text)
     return text.strip()
 
 def extract_test_questions(text):
-    """Извлечение вопросов из текста"""
     lines = text.split('\n')
     questions = []
     current_q = ""
@@ -404,8 +363,6 @@ def extract_test_questions(text):
         line = line.strip()
         if not line:
             continue
-        
-        # Проверка на начало вопроса
         if re.search(r'^\d+[.)]\s*', line) or re.search(r'^(Вопрос|Задание)\s*\d+', line, re.I):
             if current_q:
                 questions.append({'question': current_q, 'options': current_opts})
@@ -413,7 +370,6 @@ def extract_test_questions(text):
             current_opts = []
             in_question = True
         elif in_question:
-            # Проверка на варианты ответов
             if re.match(r'^[А-Яа-яA-Za-z]\)', line) or re.match(r'^\d+\)', line):
                 current_opts.append(line)
             else:
@@ -421,28 +377,22 @@ def extract_test_questions(text):
     
     if current_q:
         questions.append({'question': current_q, 'options': current_opts})
-    
     return questions
 
 def find_answer_in_knowledge(question):
-    """Поиск ответа в базе знаний"""
     if not question:
         return None
-    
     q = question.lower().strip()
     q = re.sub(r'[^\w\s?]', '', q)
     q = re.sub(r'\s+', ' ', q).strip()
     
-    # Прямой поиск
     if q in knowledge_base:
         return knowledge_base[q]
     
-    # Поиск по фразовым глаголам
     for verb, meaning in phrasal_verbs.items():
         if verb in q:
             return f"{verb} = {meaning}"
     
-    # Нечёткий поиск
     best_match = None
     best_score = 0
     for key, value in knowledge_base.items():
@@ -454,29 +404,21 @@ def find_answer_in_knowledge(question):
     return best_match
 
 def find_matching_pairs(text):
-    """Находит соответствия для задания на сопоставление"""
     pairs = {}
-    
-    # Ищем ключевые слова для соответствий
     match_lines = re.findall(r'([а-яА-Яa-zA-Z\s]+)\s*[→-]\s*([а-яА-Яa-zA-Z\s()]+)', text)
     if match_lines:
         for term, definition in match_lines:
             term_clean = term.strip().lower()
             def_clean = definition.strip()
-            # Проверяем в базе знаний
             if term_clean in ['работа', 'вес тела', 'путь', 'скорость', 'масса', 'сила', 'давление', 'плотность']:
                 pairs[term_clean] = def_clean
-    
     return pairs
 
 def find_answer_with_context(question):
-    """Комбинированный поиск ответа"""
     if not question:
         return None
-    
     q = question.lower().strip()
     
-    # Проверка на задание с пропуском (фразовые глаголы)
     if re.search(r'___|\.\.\.|\([A-Za-z]+\)', q):
         for verb in phrasal_verbs.keys():
             if verb.replace(' ', '') in q.replace(' ', '') or verb in q:
@@ -486,23 +428,19 @@ def find_answer_with_context(question):
         if 'get' in q and 'with' in q:
             return "along (get along with = ладить)"
     
-    # Поиск в базе знаний
     kb_answer = find_answer_in_knowledge(question)
     if kb_answer:
         return kb_answer
     
-    # Поиск в базе тестов МЭШ
     test_data, sim = mesh_db.find_test_by_text(question)
     if test_data and sim > 30:
         if 'questions' in test_data and test_data['questions']:
             return test_data['questions'][0].get('answer', None)
         if 'answers' in test_data:
             return list(test_data['answers'].values())[0]
-    
     return None
 
 def search_in_internet(query):
-    """Поиск в интернете (запасной вариант)"""
     try:
         results = list(search(f"{query} ответ МЭШ", num_results=2, lang='ru'))
         if results:
@@ -512,10 +450,8 @@ def search_in_internet(query):
     return None
 
 def format_full_test_answer(test_data, similarity):
-    """Форматирование полного ответа из базы тестов"""
     if not test_data:
         return None
-    
     lines = []
     lines.append(f"🔍 {similarity:.0f}% МЭШ")
     lines.append("")
@@ -526,7 +462,6 @@ def format_full_test_answer(test_data, similarity):
     if 'questions' in test_data:
         for q in test_data['questions']:
             lines.append(f"Вопрос {q.get('number', '?')}: {q.get('question', '')}")
-            
             if q.get('type') == 'matching' and 'pairs' in q:
                 lines.append("📋 Соответствия:")
                 for term, defin in q['pairs'].items():
@@ -536,14 +471,11 @@ def format_full_test_answer(test_data, similarity):
                 if q.get('options'):
                     lines.append(f"📋 Варианты: {', '.join(q['options'])}")
             lines.append("")
-    
     return '\n'.join(lines)
 
 def format_matching_answer(pairs):
-    """Форматирование ответа для задания на соответствие"""
     if not pairs:
         return None
-    
     lines = []
     lines.append("🔍 95% МЭШ")
     lines.append("")
@@ -553,11 +485,8 @@ def format_matching_answer(pairs):
     lines.append("📝 Установите соответствие между физическими величинами и их единицами измерения.")
     lines.append("")
     lines.append("✅ Соответствия:")
-    
     for term, defin in pairs.items():
         lines.append(f"  • {term} → {defin}")
-    
-    # Добавляем объяснения
     lines.append("")
     lines.append("📖 Объяснение:")
     if "работа" in pairs:
@@ -566,23 +495,19 @@ def format_matching_answer(pairs):
         lines.append("  • Вес тела (P) измеряется в Ньютонах (Н) — это сила")
     if "путь" in pairs:
         lines.append("  • Путь (s) измеряется в Метрах (м) — основная единица длины в СИ")
-    
     return '\n'.join(lines)
 
 def format_individual_answers(questions):
-    """Форматирование ответов по отдельным вопросам"""
     lines = []
     for idx, q in enumerate(questions, 1):
         ans = find_answer_with_context(q['question'])
         if not ans:
             ans = search_in_internet(q['question']) or "Не удалось найти ответ"
-        
         lines.append(f"📌 Вопрос {idx}: {q['question'][:150]}")
         if q.get('options'):
             lines.append(f"📋 Варианты: {', '.join(q['options'])}")
         lines.append(f"💡 Ответ: {ans}")
         lines.append("")
-    
     return '\n'.join(lines)
 
 # ==================== ОБРАБОТЧИКИ КОМАНД ====================
@@ -713,7 +638,6 @@ def handle_photo(message):
         processed_path = preprocess_image(image_path)
         img = Image.open(processed_path)
 
-        # Пробуем разные конфигурации распознавания
         text = ""
         configs = [
             '--psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАаБбВвГгДдЕеЁёЖжЗзИиЙйКкЛлМмНнОоПпРрСсТтУуФфХхЦцЧчШшЩщЪъЫыЬьЭэЮюЯя.,;:!?()"\'',
@@ -740,14 +664,16 @@ def handle_photo(message):
                 message.chat.id, 
                 processing_msg.message_id
             )
+            os.remove(image_path)
+            if os.path.exists(processed_path):
+                os.remove(processed_path)
             return
 
-        # Логируем распознанный текст
+        # Логируем распознанный текст (только в консоль, не отправляем пользователю)
         print(f"Распознанный текст: {text[:500]}")
 
         # Проверяем, есть ли ключевые слова для задания на соответствие
         if "соответствие" in text.lower() or "единицами измерения" in text.lower():
-            # Ищем соответствия по ключевым словам
             pairs = {
                 "работа": "Джоуль (Дж)",
                 "вес тела": "Ньютон (Н)",
@@ -759,7 +685,6 @@ def handle_photo(message):
                 "плотность": "кг/м³"
             }
             
-            # Проверяем, какие из них есть в распознанном тексте
             found_pairs = {}
             for term, defin in pairs.items():
                 if term in text.lower() or term.replace(' ', '') in text.lower().replace(' ', ''):
@@ -772,9 +697,6 @@ def handle_photo(message):
                     message.chat.id,
                     processing_msg.message_id
                 )
-                # Показываем распознанный текст
-                bot.send_message(message.chat.id, f"📄 Распознанный текст:\n{text[:1500]}")
-                # Удаляем файлы
                 os.remove(image_path)
                 if os.path.exists(processed_path):
                     os.remove(processed_path)
@@ -801,10 +723,8 @@ def handle_photo(message):
                     processing_msg.message_id
                 )
         else:
-            # Извлекаем вопросы и ищем по отдельности
             questions = extract_test_questions(text)
             if not questions:
-                # Если вопросы не найдены, используем весь текст
                 questions = [{'question': text, 'options': []}]
             
             answer_text = format_individual_answers(questions)
@@ -814,9 +734,9 @@ def handle_photo(message):
                 processing_msg.message_id
             )
 
-        # Показываем распознанный текст
-        bot.send_message(message.chat.id, f"📄 Распознанный текст:\n{text[:1500]}")
-        
+        # УДАЛЯЕМ ОТПРАВКУ РАСПОЗНАННОГО ТЕКСТА
+        # bot.send_message(message.chat.id, f"📄 Распознанный текст:\n{text[:1500]}")
+
         # Удаляем временные файлы
         os.remove(image_path)
         if os.path.exists(processed_path):
@@ -831,7 +751,6 @@ def handle_photo(message):
 def handle_text(message):
     text = message.text.lower().strip()
     
-    # Обработка кнопок
     if text in ["привет", "здравствуйте", "hi", "hello"]:
         bot.reply_to(message, "Привет! Отправь фото теста или задай вопрос.")
         return
@@ -848,7 +767,6 @@ def handle_text(message):
         send_help(message)
         return
 
-    # Поиск ответа
     answer = find_answer_with_context(message.text)
     if answer:
         bot.reply_to(message, f"💡 Ответ: {answer}")
@@ -861,19 +779,16 @@ def handle_text(message):
 
 # ==================== ЗАПУСК ====================
 if __name__ == "__main__":
-    # Отключаем вебхук перед запуском
     try:
         bot.remove_webhook()
         print("✅ Вебхук отключён")
     except Exception as e:
         print(f"⚠️ Ошибка при отключении вебхука: {e}")
     
-    # Небольшая задержка
     time.sleep(2)
     
     print("🚀 Бот для решения тестов МЭШ запущен!")
     
-    # Запускаем с обработкой ошибок
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=60)
