@@ -2,7 +2,7 @@ import os
 import re
 import logging
 import subprocess
-import shutil  # <-- добавили
+import shutil
 import json
 from io import BytesIO
 from difflib import SequenceMatcher
@@ -18,7 +18,7 @@ from googlesearch import search
 from fuzzywuzzy import fuzz
 
 # ==================== НАСТРОЙКИ TESSERACT ====================
-# Ищем Tesseract в системе
+# Ищем Tesseract в системе (через shutil)
 tesseract_path = shutil.which('tesseract')
 if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
@@ -34,7 +34,6 @@ else:
     else:
         print("❌ Tesseract НЕ НАЙДЕН! Убедитесь, что он установлен.")
         # Можно выйти или продолжить, но OCR не будет работать
-        # raise RuntimeError("Tesseract not found")
 
 # Проверяем, что Tesseract работает
 try:
