@@ -14,11 +14,10 @@ def ask_deepseek(question, context=""):
     Отправляет запрос в DeepSeek API и возвращает ответ
     """
     if not DEEPSEEK_API_KEY:
-        logger.warning("DEEPSEEK_API_KEY не задан! Используйте переменную окружения.")
+        logger.warning("DEEPSEEK_API_KEY не задан!")
         return None
-    
+
     try:
-        # Формируем промпт для DeepSeek
         prompt = f"""Ты — помощник для решения тестов МЭШ (Московская электронная школа) для 7-8 классов.
 Твоя задача — дать точный ответ на вопрос по школьной программе.
 
@@ -28,12 +27,12 @@ def ask_deepseek(question, context=""):
 
 Ответь кратко и чётко. Если это тест с вариантами ответов, укажи правильный вариант.
 """
-        
+
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         data = {
             "model": "deepseek-chat",
             "messages": [
@@ -43,17 +42,17 @@ def ask_deepseek(question, context=""):
             "temperature": 0.3,
             "max_tokens": 500
         }
-        
+
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
-        
+
         if response.status_code == 200:
             result = response.json()
             answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             return answer.strip()
         else:
-            logger.error(f"Ошибка DeepSeek API: {response.status_code} - {response.text}")
+            logger.error(f"Ошибка DeepSeek API: {response.status_code}")
             return None
-            
+
     except requests.exceptions.Timeout:
         logger.error("Таймаут при запросе к DeepSeek API")
         return None
@@ -67,10 +66,10 @@ def ask_deepseek_with_options(question, options):
     """
     if not DEEPSEEK_API_KEY:
         return None
-    
+
     try:
         options_text = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
-        
+
         prompt = f"""Ты — помощник для решения тестов МЭШ.
 
 Вопрос: {question}
@@ -81,12 +80,12 @@ def ask_deepseek_with_options(question, options):
 Укажи номер правильного ответа и сам ответ. Например: "3. Лодка проплыла мимо и мы бросились догонять её."
 Ответ должен быть кратким и точным.
 """
-        
+
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         data = {
             "model": "deepseek-chat",
             "messages": [
@@ -96,9 +95,9 @@ def ask_deepseek_with_options(question, options):
             "temperature": 0.2,
             "max_tokens": 200
         }
-        
+
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
-        
+
         if response.status_code == 200:
             result = response.json()
             answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -106,7 +105,7 @@ def ask_deepseek_with_options(question, options):
         else:
             logger.error(f"Ошибка DeepSeek API: {response.status_code}")
             return None
-            
+
     except Exception as e:
         logger.error(f"Ошибка при запросе к DeepSeek: {e}")
         return None
